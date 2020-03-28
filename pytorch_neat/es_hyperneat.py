@@ -60,7 +60,6 @@ class ESNetwork:
             p.divide_childrens()
             out_coords = []
             weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
-            #print(weights)
             low_var_count = 0
             for x in range(len(coords)):
                 if(torch.var(weights[: ,x]) < self.division_threshold):

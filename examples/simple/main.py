@@ -34,6 +34,7 @@ def make_net(genome, config, bs):
 
 
 def activate_net(net, states):
+    print("inputs: ", states)
     outputs = net.activate(states).numpy()
     #print(outputs)
     return outputs[:, 0] > 0.5
