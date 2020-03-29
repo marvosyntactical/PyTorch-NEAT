@@ -28,28 +28,46 @@ class ESNetwork:
         self.width = len(substrate.output_coordinates)
         self.root_x = self.width/2
         self.root_y = (len(substrate.input_coordinates)/self.width)/2
+        self.is_safe = safe
 
 
     # creates phenotype with n dimensions
     def create_phenotype_network_nd(self, filename=None):
         rnn_params = self.es_hyperneat_nd_tensors()
-        
-        return RecurrentNet(
-            n_inputs = rnn_params["n_inputs"],
-            n_outputs = rnn_params["n_outputs"],
-            n_hidden = rnn_params["n_hidden"],
-            output_to_hidden = rnn_params["output_to_hidden"],
-            output_to_output = rnn_params["output_to_output"],
-            hidden_to_hidden = rnn_params["hidden_to_hidden"],
-            input_to_hidden = rnn_params["input_to_hidden"],
-            input_to_output = rnn_params["input_to_output"],
-            hidden_to_output = rnn_params["hidden_to_output"],
-            hidden_responses = rnn_params["hidden_responses"],
-            output_responses = rnn_params["output_responses"],
-            hidden_biases = rnn_params["hidden_biases"],
-            output_biases = rnn_params["output_biases"],
-            activation= str_to_activation[self.activation_string]
-        )
+        if self.is_safe == False:
+            return RecurrentNet(
+                n_inputs = rnn_params["n_inputs"],
+                n_outputs = rnn_params["n_outputs"],
+                n_hidden = rnn_params["n_hidden"],
+                output_to_hidden = rnn_params["output_to_hidden"],
+                output_to_output = rnn_params["output_to_output"],
+                hidden_to_hidden = rnn_params["hidden_to_hidden"],
+                input_to_hidden = rnn_params["input_to_hidden"],
+                input_to_output = rnn_params["input_to_output"],
+                hidden_to_output = rnn_params["hidden_to_output"],
+                hidden_responses = rnn_params["hidden_responses"],
+                output_responses = rnn_params["output_responses"],
+                hidden_biases = rnn_params["hidden_biases"],
+                output_biases = rnn_params["output_biases"],
+                activation= str_to_activation[self.activation_string]
+            )
+        else:
+            return SafeRecurrentNet(
+                n_inputs = rnn_params["n_inputs"],
+                n_outputs = rnn_params["n_outputs"],
+                n_hidden = rnn_params["n_hidden"],
+                output_to_hidden = rnn_params["output_to_hidden"],
+                output_to_output = rnn_params["output_to_output"],
+                hidden_to_hidden = rnn_params["hidden_to_hidden"],
+                input_to_hidden = rnn_params["input_to_hidden"],
+                input_to_output = rnn_params["input_to_output"],
+                hidden_to_output = rnn_params["hidden_to_output"],
+                hidden_responses = rnn_params["hidden_responses"],
+                output_responses = rnn_params["output_responses"],
+                hidden_biases = rnn_params["hidden_biases"],
+                output_biases = rnn_params["output_biases"],
+                activation= str_to_activation[self.activation_string]
+            )
 
     def division_initialization_nd_tensors(self, coords, outgoing):
         root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
