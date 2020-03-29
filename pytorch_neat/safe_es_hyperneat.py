@@ -3,11 +3,10 @@ import copy
 import numpy as np
 import itertools
 from math import factorial
-from pytorch_neat.recurrent_net import RecurrentNet
-from pytorch_neat.recurrent_safe import SafeRecurrentNet
+from pytorch_neat.recurrent_net_safe import SafeRecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
-from pytorch_neat.activations import str_to_activation
 import torch
+from pytorch_neat.activations import str_to_activation
 #encodes a substrate of input and output coords with a cppn, adding 
 #hidden coords along the 
 
@@ -16,6 +15,7 @@ class ESNetwork:
     def __init__(self, substrate, cppn, params):
         self.substrate = substrate
         self.cppn = cppn
+        self.optimizer = torch.optim.Adam(cppn.parameters(), lr=0.0001)
         self.initial_depth = params["initial_depth"]
         self.max_depth = params["max_depth"]
         self.variance_threshold = params["variance_threshold"]
@@ -33,7 +33,8 @@ class ESNetwork:
     # creates phenotype with n dimensions
     def create_phenotype_network_nd(self, filename=None):
         rnn_params = self.es_hyperneat_nd_tensors()
-        return RecurrentNet(
+        
+        return SafeRecurrentNet(
             n_inputs = rnn_params["n_inputs"],
             n_outputs = rnn_params["n_outputs"],
             n_hidden = rnn_params["n_hidden"],
@@ -49,6 +50,7 @@ class ESNetwork:
             output_biases = rnn_params["output_biases"],
             activation= str_to_activation[self.activation_string]
         )
+
     def division_initialization_nd_tensors(self, coords, outgoing):
         root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
         q = [root]
@@ -59,6 +61,7 @@ class ESNetwork:
             p.divide_childrens()
             out_coords = []
             weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
+            #print(weights)
             low_var_count = 0
             for x in range(len(coords)):
                 if(torch.var(weights[: ,x]) < self.division_threshold):
@@ -105,7 +108,7 @@ class ESNetwork:
                     mins = torch.min(grouped, dim=1)
                     #print("mins: ")
                     #print(mins[0])
-                    if( torch.max(mins[0]) > self.band_threshold):
+                    if(torch.max(mins[0]) > self.band_threshold):
                         if outgoing:
                             con = nd_Connection(coords[x], c.coord, c.w[x])
                         else:
@@ -241,5 +244,5 @@ class nd_Connection:
 
 def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0):
     inputs = get_nd_coord_inputs(coords_in, coords_out)
-    activs = cppn(input_dict = inputs)
+    activs = cppn(inputs)
     return activs
