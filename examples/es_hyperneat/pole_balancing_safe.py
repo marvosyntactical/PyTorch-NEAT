@@ -12,14 +12,16 @@ from pytorch_neat.activations import tanh_activation
 from pytorch_neat.adaptive_linear_net import AdaptiveLinearNet
 from pytorch_neat.multi_env_eval import MultiEnvEvaluator
 from pytorch_neat.neat_reporter import LogReporter
-from pytorch_neat.es_hyperneat import ESNetwork
+from pytorch_neat.safe_es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
-from pytorch_neat.cppn import create_cppn
+from pytorch_neat.cppn_safe import create_cppn
 
 
 
 max_env_steps = 200
 
+
+actions_dict = {}
 
 def make_env():
     return gym.make("CartPole-v0")
@@ -47,7 +49,7 @@ def make_net(genome, config, bs):
         leaf_names.append(str(i) + "_out")
 
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
-    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params)
+    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params, genome.key)
     #net = net_builder.create_phenotype_network_nd('./genome_vis')
     return net_builder
 
@@ -60,14 +62,18 @@ def reset_substrate(states):
         sign *= -1
     return Substrate(input_cords, output_cords)
 
-def activate_net(net, states):
+def activate_net(net, g_key):
     #print(states)
     new_sub = reset_substrate(states[0])
     net.reset_substrate(new_sub)
     network = net.create_phenotype_network_nd() 
     outputs = network.activate(states).numpy()
     #print(outputs)
-    return outputs[0] > 0.5
+    out = outputs[0] > 0.5
+    if out == True:
+        actions_dict[g_key].apend([1.0, 0.0])
+    else:
+        actions_dict[g_key].apend([0.0, 1.0])
 
 
 @click.command()
@@ -89,7 +95,11 @@ def run(n_generations):
     )
 
     def eval_genomes(genomes, config):
+        actions_dict = {}
+        champ_key = 0
+        best_fitness = 
         for _, genome in genomes:
+            actions_dict[genome.key] = []
             genome.fitness = evaluator.eval_genome(genome, config)
 
     pop = neat.Population(config)

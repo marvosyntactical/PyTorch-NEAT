@@ -12,7 +12,7 @@ from pytorch_neat.activations import str_to_activation
 
 class ESNetwork:
 
-    def __init__(self, substrate, cppn, params):
+    def __init__(self, substrate, cppn, params, key):
         self.substrate = substrate
         self.cppn = cppn
         self.optimizer = torch.optim.Adam(cppn.parameters(), lr=0.0001)
@@ -28,6 +28,7 @@ class ESNetwork:
         self.width = len(substrate.output_coordinates)
         self.root_x = self.width/2
         self.root_y = (len(substrate.input_coordinates)/self.width)/2
+        self.key = key
 
 
     # creates phenotype with n dimensions
