@@ -22,7 +22,7 @@ max_env_steps = 200
 
 
 actions_dict = {}
-cppn_dict = {}
+
 
 def make_env():
     return gym.make("CartPole-v0")
@@ -36,7 +36,14 @@ def make_net(genome, config, bs):
             "iteration_level": 3,
             "division_threshold": 0.21,
             "max_weight": 13.0,
-            "activation": "tanh"}
+            "activation": "tanh",
+            "baesline_level": 2}
+    input_cords, output_cords, leaf_names = set_initial_coords()
+    [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
+    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params, genome.key)
+    return net_builder
+
+def set_initial_coords():
     input_cords = []
     output_cords = [(0.0, -1.0, -1.0)]
     sign = 1
@@ -48,11 +55,8 @@ def make_net(genome, config, bs):
     for i in range(len(output_cords[0])):
         leaf_names.append(str(i) + "_in")
         leaf_names.append(str(i) + "_out")
-
-    [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
-    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params, genome.key)
-    #net = net_builder.create_phenotype_network_nd('./genome_vis')
-    return net_builder
+    return input_cords, output_cords, leaf_names
+    
 
 def reset_substrate(states):
     input_cords = []
@@ -63,6 +67,9 @@ def reset_substrate(states):
         sign *= -1
     return Substrate(input_cords, output_cords)
 
+def execute_back_prop(genome_dict, champ_key):
+    return 
+
 def activate_net(net):
     #print(states)
     new_sub = reset_substrate(states[0])
@@ -70,11 +77,7 @@ def activate_net(net):
     network = net.create_phenotype_network_nd() 
     outputs = network.activate(states).numpy()
     #print(outputs)
-    out = outputs[0] > 0.5
-    if out == True:
-        actions_dict[net.key].apend([1.0, 0.0])
-    else:
-        actions_dict[net.key].apend([0.0, 1.0])
+    return outputs[0] > 0.5
 
 
 @click.command()
@@ -96,12 +99,15 @@ def run(n_generations):
     )
 
     def eval_genomes(genomes, config):
-        actions_dict = {}
+        genome_dict = {}
         champ_key = 0
-        best_fitness = 
+        best_fitness = -10000
         for _, genome in genomes:
-            actions_dict[genome.key] = []
+            genome_dict[genome.key] = genome
             genome.fitness = evaluator.eval_genome(genome, config)
+            if genome.fitness > best_fitness:
+                champ_key = genome.key
+        execute_back_prop(genome_dict, champ_key)
 
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()
