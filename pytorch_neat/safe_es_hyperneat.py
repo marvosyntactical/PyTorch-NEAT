@@ -3,7 +3,7 @@ import copy
 import numpy as np
 import itertools
 from math import factorial
-from pytorch_neat.recurrent_net_safe import SafeRecurrentNet
+from pytorch_neat.recurrent_net import RecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 import torch
 from pytorch_neat.activations import str_to_activation
@@ -35,7 +35,7 @@ class ESNetwork:
     def create_phenotype_network_nd(self, filename=None):
         rnn_params = self.es_hyperneat_nd_tensors()
         
-        return SafeRecurrentNet(
+        return RecurrentNet(
             n_inputs = rnn_params["n_inputs"],
             n_outputs = rnn_params["n_outputs"],
             n_hidden = rnn_params["n_hidden"],
@@ -70,6 +70,27 @@ class ESNetwork:
             for idx,c in enumerate(p.cs):
                 c.w = weights[idx]
             if (p.lvl < self.initial_depth) or (p.lvl < self.max_depth and low_var_count != len(coords)):
+                    q.extend(p.cs)
+        return root
+
+    def baseline_pass(self, coords, outgoing):
+        root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
+        q = [root]
+        while q:
+            p = q.pop(0)
+            # here we will subdivide to 2^coordlength as described above
+            # this allows us to search from +- midpoints on each axis of the input coord
+            p.divide_childrens()
+            out_coords = []
+            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, no_grad=False)
+            #print(weights)
+            low_var_count = 0
+            for x in range(len(coords)):
+                if(torch.var(weights[: ,x]) < self.division_threshold):
+                    low_var_count += 1 
+            for idx,c in enumerate(p.cs):
+                c.w = weights[idx]
+            if (p.lvl < self.safe_baseline):
                     q.extend(p.cs)
         return root
 
@@ -243,7 +264,7 @@ class nd_Connection:
     def __hash__(self):
         return hash(self.coords + (self.weight,))
 
-def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0):
+def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, no_grad=True):
     inputs = get_nd_coord_inputs(coords_in, coords_out)
-    activs = cppn(inputs)
+    activs = cppn(inputs, no_grad=no_grad)
     return activs

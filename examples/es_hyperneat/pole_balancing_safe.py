@@ -22,6 +22,7 @@ max_env_steps = 200
 
 
 actions_dict = {}
+cppn_dict = {}
 
 def make_env():
     return gym.make("CartPole-v0")
@@ -62,7 +63,7 @@ def reset_substrate(states):
         sign *= -1
     return Substrate(input_cords, output_cords)
 
-def activate_net(net, g_key):
+def activate_net(net):
     #print(states)
     new_sub = reset_substrate(states[0])
     net.reset_substrate(new_sub)
@@ -71,9 +72,9 @@ def activate_net(net, g_key):
     #print(outputs)
     out = outputs[0] > 0.5
     if out == True:
-        actions_dict[g_key].apend([1.0, 0.0])
+        actions_dict[net.key].apend([1.0, 0.0])
     else:
-        actions_dict[g_key].apend([0.0, 1.0])
+        actions_dict[net.key].apend([0.0, 1.0])
 
 
 @click.command()
