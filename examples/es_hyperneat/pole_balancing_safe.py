@@ -17,6 +17,15 @@ from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn_safe import create_cppn
 
 
+PARAMS = {"initial_depth": 1,
+        "max_depth": 2,
+        "variance_threshold": 0.55,
+        "band_threshold": 0.34,
+        "iteration_level": 3,
+        "division_threshold": 0.21,
+        "max_weight": 13.0,
+        "activation": "tanh",
+        "safe_baseline": 2}
 
 max_env_steps = 200
 
@@ -29,18 +38,11 @@ def make_env():
 
 def make_net(genome, config, bs):
     #start by setting up a substrate for this bad cartpole boi
-    params = {"initial_depth": 1,
-            "max_depth": 2,
-            "variance_threshold": 0.55,
-            "band_threshold": 0.34,
-            "iteration_level": 3,
-            "division_threshold": 0.21,
-            "max_weight": 13.0,
-            "activation": "tanh",
-            "baesline_level": 2}
+
     input_cords, output_cords, leaf_names = set_initial_coords()
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
-    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params, genome.key)
+    print(len(cppn.weights))
+    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
     return net_builder
 
 def set_initial_coords():
@@ -67,10 +69,24 @@ def reset_substrate(states):
         sign *= -1
     return Substrate(input_cords, output_cords)
 
-def execute_back_prop(genome_dict, champ_key):
+def execute_back_prop(genome_dict, champ_key, config):
+    input_cords, output_cords, leaf_names = set_initial_coords()
+    [cppn] = create_cppn(genome_dict[champ_key], config, leaf_names, ['cppn_out'])
+    net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
+    champ_output = net_builder.safe_baseline()
+    for key in genome_dict:
+        if key != champ_key:
+            [cppn_2] = create_cppn(genome_dict[key], config, leaf_names, ['cppn_out'])
+            es_net = ESNetwork(Substrate(input_cords, output_cords), cppn_2, PARAMS)
+            output = es_net.safe_baseline()
+            loss_val = (champ_output - output).pow(2).mean()
+            loss_val.backward()
+            es_net.optimizer.step()
+            print(cppn.weights)
+            es_net.map_back_to_genome(genome_dict[key])
     return 
 
-def activate_net(net):
+def activate_net(net,states):
     #print(states)
     new_sub = reset_substrate(states[0])
     net.reset_substrate(new_sub)
@@ -107,7 +123,10 @@ def run(n_generations):
             genome.fitness = evaluator.eval_genome(genome, config)
             if genome.fitness > best_fitness:
                 champ_key = genome.key
-        execute_back_prop(genome_dict, champ_key)
+        execute_back_prop(genome_dict, champ_key, config)
+        for _, genome in genomes:
+            genome.fitness = evaluator.eval_genome(genome, config)
+        return
 
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()

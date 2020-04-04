@@ -30,6 +30,7 @@ class Node(torch.nn.Module):
         aggregation,
         name=None,
         leaves=None,
+        gene_idx = 0,
     ):
     
         """
@@ -42,9 +43,12 @@ class Node(torch.nn.Module):
         name: str
         leaves: dict of Leaves
         """
+        super(Node, self).__init__()
         self.children = children
         self.leaves = leaves
-        self.weights = weights
+        self.neuron = torch.nn.Linear(len(weights), 1)
+        self.weights = torch.nn.Parameter(torch.Tensor(weights))
+        print(self.neuron)
         self.response = response
         self.bias = bias
         self.activation = activation
@@ -94,21 +98,32 @@ class Node(torch.nn.Module):
             self.activs = self.activate(xs, shape)
         return self.activs
 
-    def __call__(self, **inputs):
+    def forward(self, **inputs):
         assert self.leaves is not None
         assert inputs
         if "input_dict" in inputs:
             inputs = inputs["input_dict"]
         shape = list(inputs.values())[0].shape
         self.reset()
-        for name in self.leaves.keys():
-            assert (
-                inputs[name].shape == shape
-            ), "Wrong activs shape for leaf {}, {} != {}".format(
-                name, inputs[name].shape, shape
-            )
-            self.leaves[name].set_activs(torch.Tensor(inputs[name]))
-        return self.get_activs(shape)
+        if no_grad == True:
+            with torch.no_grad():
+                for name in self.leaves.keys():
+                    assert (
+                        inputs[name].shape == shape
+                    ), "Wrong activs shape for leaf {}, {} != {}".format(
+                        name, inputs[name].shape, shape
+                    )
+                    self.leaves[name].set_activs(torch.Tensor(inputs[name]))
+                return self.get_activs(shape)
+        else:
+            for name in self.leaves.keys():
+                assert (
+                    inputs[name].shape == shape
+                ), "Wrong activs shape for leaf {}, {} != {}".format(
+                    name, inputs[name].shape, shape
+                )
+                self.leaves[name].set_activs(torch.Tensor(inputs[name]))
+            return self.get_activs(shape)
 
     def _prereset(self):
         if self.is_reset is None:
