@@ -102,7 +102,10 @@ class Node(torch.nn.Module):
         assert self.leaves is not None
         assert inputs
         if "input_dict" in inputs:
-            inputs = inputs["input_dict"]
+            no_grad = inputs["input_dict"]["no_grad"]
+            inputs = inputs["input_dict"]["inputs"]
+        else:
+            no_grad = True
         shape = list(inputs.values())[0].shape
         self.reset()
         if no_grad == True:

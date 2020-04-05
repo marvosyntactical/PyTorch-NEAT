@@ -18,6 +18,7 @@ class ESNetwork:
         self.optimizer = torch.optim.Adam(cppn.parameters(), lr=0.0001)
         self.initial_depth = params["initial_depth"]
         self.max_depth = params["max_depth"]
+        self.safe_baseline_depth = params["safe_baseline_depth"]
         self.variance_threshold = params["variance_threshold"]
         self.band_threshold = params["band_threshold"]
         self.iteration_level = params["iteration_level"]
@@ -29,10 +30,10 @@ class ESNetwork:
         self.root_x = self.width/2
         self.root_y = (len(substrate.input_coordinates)/self.width)/2
 
-    def rest_substrate(self, substrate):
+    def reset_substrate(self, substrate):
         self.connections = set()
         self.substrate = substrate
-        
+
     # creates phenotype with n dimensions
     def create_phenotype_network_nd(self, filename=None):
         rnn_params = self.es_hyperneat_nd_tensors()
@@ -75,30 +76,22 @@ class ESNetwork:
                     q.extend(p.cs)
         return root
 
-    def safe_division_pass(self, coords, outgoing):
+    def safe_division_pass(self, coords, outgoing, with_grad=False):
         root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
         q = [root]
-        outputs = []
+        out = 0.0
         while q:
             p = q.pop(0)
             # here we will subdivide to 2^coordlength as described above
             # this allows us to search from +- midpoints on each axis of the input coord
             p.divide_childrens()
             #out_coords = []
-            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, no_grad=False)
-            #print(weights)
-            low_var_count = 0
-            for x in range(len(coords)):
-                if(torch.var(weights[: ,x]) < self.division_threshold):
-                    low_var_count += 1 
-            '''
-            for idx,c in enumerate(p.cs):
-                c.w = weights[idx]
-            '''
-            outputs.append(weights)
-            if (p.lvl < self.safe_baseline):
+            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, no_grad=with_grad)
+            print(weights)
+            out += weights
+            if (p.lvl < self.safe_baseline_depth):
                     q.extend(p.cs)
-        return outputs
+        return out
 
     def prune_all_the_tensors_aha(self, coords, p, outgoing):
         coord_len = len(coords[0])
@@ -316,5 +309,6 @@ class nd_Connection:
 
 def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, no_grad=True):
     inputs = get_nd_coord_inputs(coords_in, coords_out)
-    activs = cppn(inputs, no_grad=no_grad)
+    in_dict = {"inputs": inputs, "no_grad": no_grad}
+    activs = cppn(input_dict = in_dict)
     return activs

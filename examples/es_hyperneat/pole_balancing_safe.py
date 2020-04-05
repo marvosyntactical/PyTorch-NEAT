@@ -25,7 +25,7 @@ PARAMS = {"initial_depth": 1,
         "division_threshold": 0.21,
         "max_weight": 13.0,
         "activation": "tanh",
-        "safe_baseline": 2}
+        "safe_baseline_depth": 2}
 
 max_env_steps = 200
 
@@ -74,6 +74,7 @@ def execute_back_prop(genome_dict, champ_key, config):
     [cppn] = create_cppn(genome_dict[champ_key], config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
     champ_output = net_builder.safe_baseline()
+    champ_output.
     for key in genome_dict:
         if key != champ_key:
             [cppn_2] = create_cppn(genome_dict[key], config, leaf_names, ['cppn_out'])
@@ -93,7 +94,7 @@ def activate_net(net,states):
     network = net.create_phenotype_network_nd() 
     outputs = network.activate(states).numpy()
     #print(outputs)
-    return outputs[0] > 0.5
+    return outputs[:,0] > 0.5
 
 
 @click.command()
@@ -114,7 +115,7 @@ def run(n_generations):
         make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps
     )
 
-    def eval_genomes(genomes, config):
+    def eval_genomes(genomes, config, grad_steps=0):
         genome_dict = {}
         champ_key = 0
         best_fitness = -10000
@@ -126,7 +127,11 @@ def run(n_generations):
         execute_back_prop(genome_dict, champ_key, config)
         for _, genome in genomes:
             genome.fitness = evaluator.eval_genome(genome, config)
-        return
+        grad_steps += 1
+        if grad_steps == config.grad_steps:
+            return
+        else:
+            self.eval_genomes(genomes, config, grad_steps)
 
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()
