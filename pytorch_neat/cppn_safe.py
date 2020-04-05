@@ -46,9 +46,7 @@ class Node(torch.nn.Module):
         super(Node, self).__init__()
         self.children = children
         self.leaves = leaves
-        self.neuron = torch.nn.Linear(len(weights), 1)
         self.weights = torch.nn.Parameter(torch.Tensor(weights))
-        print(self.neuron)
         self.response = response
         self.bias = bias
         self.activation = activation
