@@ -73,7 +73,7 @@ def execute_back_prop(genome_dict, champ_key, config):
     input_cords, output_cords, leaf_names = set_initial_coords()
     [cppn] = create_cppn(genome_dict[champ_key], config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
-    champ_output = net_builder.safe_baseline(True)
+    champ_output = net_builder.safe_baseline(False)
     for key in genome_dict:
         if key != champ_key:
             [cppn_2] = create_cppn(genome_dict[key], config, leaf_names, ['cppn_out'])
