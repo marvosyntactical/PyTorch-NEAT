@@ -46,6 +46,7 @@ class Node(torch.nn.Module):
         super(Node, self).__init__()
         self.children = children
         self.leaves = leaves
+        #self.neuron = torch.nn.Linear(len(weights), 1)
         self.weights = torch.nn.Parameter(torch.Tensor(weights))
         self.response = response
         self.bias = bias
@@ -100,13 +101,13 @@ class Node(torch.nn.Module):
         assert self.leaves is not None
         assert inputs
         if "input_dict" in inputs:
-            no_grad = inputs["input_dict"]["no_grad"]
+            grad = inputs["input_dict"]["grad"]
             inputs = inputs["input_dict"]["inputs"]
         else:
-            no_grad = True
+            grad = False
         shape = list(inputs.values())[0].shape
         self.reset()
-        if no_grad == True:
+        if grad == False:
             with torch.no_grad():
                 for name in self.leaves.keys():
                     assert (

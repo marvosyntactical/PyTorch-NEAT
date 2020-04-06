@@ -86,7 +86,7 @@ class ESNetwork:
             # this allows us to search from +- midpoints on each axis of the input coord
             p.divide_childrens()
             #out_coords = []
-            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, no_grad=with_grad)
+            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, with_grad=with_grad)
             print(weights)
             out += weights
             if (p.lvl < self.safe_baseline_depth):
@@ -179,14 +179,12 @@ class ESNetwork:
         rnn_params = self.structure_for_rnn(hidden_full, connections1, connections2, connections3)
         return rnn_params
 
-    def safe_baseline(self):
+    def safe_baseline(self, with_grad=False):
         inputs = self.substrate.input_coordinates
         #print(inputs)
         outputs = self.substrate.output_coordinates
-        hidden_full = []
-        hidden_nodes, unexplored_hidden_nodes, hidden_ids = [], [], []
-        connections1, connections2, connections3 = set(), set(), set()
-        root = self.safe_division_pass(inputs, True)
+
+        root = self.safe_division_pass(inputs, True, with_grad)
         '''
         self.prune_all_the_tensors_aha(inputs, root, True)
         connections1 = connections1.union(self.connections)
@@ -307,8 +305,8 @@ class nd_Connection:
     def __hash__(self):
         return hash(self.coords + (self.weight,))
 
-def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, no_grad=True):
+def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, with_grad=False):
     inputs = get_nd_coord_inputs(coords_in, coords_out)
-    in_dict = {"inputs": inputs, "no_grad": no_grad}
+    in_dict = {"inputs": inputs, "grad": with_grad}
     activs = cppn(input_dict = in_dict)
     return activs

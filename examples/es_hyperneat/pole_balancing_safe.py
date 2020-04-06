@@ -73,13 +73,12 @@ def execute_back_prop(genome_dict, champ_key, config):
     input_cords, output_cords, leaf_names = set_initial_coords()
     [cppn] = create_cppn(genome_dict[champ_key], config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
-    champ_output = net_builder.safe_baseline()
-    champ_output.
+    champ_output = net_builder.safe_baseline(True)
     for key in genome_dict:
         if key != champ_key:
             [cppn_2] = create_cppn(genome_dict[key], config, leaf_names, ['cppn_out'])
             es_net = ESNetwork(Substrate(input_cords, output_cords), cppn_2, PARAMS)
-            output = es_net.safe_baseline()
+            output = es_net.safe_baseline(True)
             loss_val = (champ_output - output).pow(2).mean()
             loss_val.backward()
             es_net.optimizer.step()
@@ -102,6 +101,9 @@ def activate_net(net,states):
 def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
+
+    total_grad_steps = 3
+
     config_path = os.path.join(os.path.dirname(__file__), "neat.cfg")
     config = neat.Config(
         neat.DefaultGenome,
@@ -115,6 +117,10 @@ def run(n_generations):
         make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps
     )
 
+    # safe es-hyperneat evaluations should all use this conventions
+    # where the number of iterations and gradients steps is set in the config
+    # and then we recursively call this adjusting grads each time and
+    # then returning to perform evolution after this
     def eval_genomes(genomes, config, grad_steps=0):
         genome_dict = {}
         champ_key = 0
@@ -124,13 +130,13 @@ def run(n_generations):
             genome.fitness = evaluator.eval_genome(genome, config)
             if genome.fitness > best_fitness:
                 champ_key = genome.key
-        execute_back_prop(genome_dict, champ_key, config)
-        for _, genome in genomes:
-            genome.fitness = evaluator.eval_genome(genome, config)
-        grad_steps += 1
-        if grad_steps == config.grad_steps:
+        if grad_steps == total_grad_steps:
             return
         else:
+            execute_back_prop(genome_dict, champ_key, config)
+            for _, genome in genomes:
+                genome.fitness = evaluator.eval_genome(genome, config)
+            grad_steps += 1
             self.eval_genomes(genomes, config, grad_steps)
 
     pop = neat.Population(config)
