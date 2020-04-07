@@ -87,7 +87,6 @@ class ESNetwork:
             p.divide_childrens()
             #out_coords = []
             weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight, with_grad=with_grad)
-            print(weights)
             out += weights
             if (p.lvl < self.safe_baseline_depth):
                     q.extend(p.cs)

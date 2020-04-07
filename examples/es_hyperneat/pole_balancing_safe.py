@@ -19,13 +19,13 @@ from pytorch_neat.cppn_safe import create_cppn
 
 PARAMS = {"initial_depth": 1,
         "max_depth": 2,
-        "variance_threshold": 0.55,
-        "band_threshold": 0.34,
+        "variance_threshold": 0.8,
+        "band_threshold": 0.05,
         "iteration_level": 3,
-        "division_threshold": 0.21,
-        "max_weight": 13.0,
-        "activation": "tanh",
-        "safe_baseline_depth": 2}
+        "division_threshold": 0.3,
+        "max_weight": 34.0,
+        "activation": "sigmoid",
+        "safe_baseline_depth": 1}
 
 max_env_steps = 200
 
@@ -41,9 +41,9 @@ def make_net(genome, config, bs):
 
     input_cords, output_cords, leaf_names = set_initial_coords()
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
-    print(len(cppn.weights))
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
-    return net_builder
+    network = net_builder.create_phenotype_network_nd()
+    return network
 
 def set_initial_coords():
     input_cords = []
@@ -79,21 +79,21 @@ def execute_back_prop(genome_dict, champ_key, config):
             [cppn_2] = create_cppn(genome_dict[key], config, leaf_names, ['cppn_out'])
             es_net = ESNetwork(Substrate(input_cords, output_cords), cppn_2, PARAMS)
             output = es_net.safe_baseline(True)
+            es_net.optimizer.zero_grad()
             loss_val = (champ_output - output).pow(2).mean()
             loss_val.backward()
             es_net.optimizer.step()
-            print(cppn.weights)
             es_net.map_back_to_genome(genome_dict[key])
     return 
 
 def activate_net(net,states):
     #print(states)
-    new_sub = reset_substrate(states[0])
-    net.reset_substrate(new_sub)
-    network = net.create_phenotype_network_nd() 
-    outputs = network.activate(states).numpy()
+    #new_sub = reset_substrate(states[0])
+    #net.reset_substrate(new_sub)
+    #network = net.create_phenotype_network_nd() 
+    outputs = net.activate(states).numpy()
     #print(outputs)
-    return outputs[:,0] > 0.5
+    return outputs[0] > 0.5
 
 
 @click.command()
@@ -102,7 +102,7 @@ def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
 
-    total_grad_steps = 3
+    total_grad_steps = 1
 
     config_path = os.path.join(os.path.dirname(__file__), "neat.cfg")
     config = neat.Config(
@@ -137,7 +137,7 @@ def run(n_generations):
             for _, genome in genomes:
                 genome.fitness = evaluator.eval_genome(genome, config)
             grad_steps += 1
-            self.eval_genomes(genomes, config, grad_steps)
+            eval_genomes(genomes, config, grad_steps)
 
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()

@@ -33,7 +33,7 @@ def make_net(genome, config, bs):
             "iteration_level": 3,
             "division_threshold": 0.3,
             "max_weight": 34.0,
-            "activation": "tanh"}
+            "activation": "sigmoid"}
     input_cords = []
     output_cords = [(0.0, -1.0, -1.0)]
     sign = 1

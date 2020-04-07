@@ -49,6 +49,11 @@ class ESNetwork:
             output_biases = rnn_params["output_biases"],
             activation= str_to_activation[self.activation_string]
         )
+
+    def reset_substrate(self, substrate):
+        #self.connections = set()
+        self.substrate = substrate
+
     def division_initialization_nd_tensors(self, coords, outgoing):
         root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
         q = [root]
