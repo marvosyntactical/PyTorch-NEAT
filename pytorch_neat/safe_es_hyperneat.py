@@ -1,4 +1,5 @@
 import neat 
+from neat.graphs import required_for_output
 import copy
 import numpy as np
 import itertools
@@ -7,6 +8,7 @@ from pytorch_neat.recurrent_net import RecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 import torch
 from pytorch_neat.activations import str_to_activation
+from pytorch_neat.cppn_safe import Leaf, Node
 #encodes a substrate of input and output coords with a cppn, adding 
 #hidden coords along the 
 
@@ -217,12 +219,55 @@ class ESNetwork:
         '''
         return root
 
-    def map_back_to_genome(self, genome):
-        '''
-        for c in self.cppn.children:
-            print(c)
-        '''
+    def map_back_to_genome(self, genome, config, leaf_names, node_names):
+
+        genome_config = config.genome_config
+        required = required_for_output(
+            genome_config.input_keys, genome_config.output_keys, genome.connections
+        )
+
+        # Gather inputs and expressed connections.
+        node_inputs = {i: {} for i in genome_config.output_keys}
+        for cg in genome.connections.values():
+            if not cg.enabled:
+                continue
+
+            i, o = cg.key
+
+            if o not in required and i not in required:
+                continue
+
+            if i in genome_config.output_keys:
+                continue
+
+            if o not in node_inputs:
+                node_inputs[o] = {}
+            
+            node_inputs[o][i] = cg.weight
+            
+            if i not in node_inputs:
+                node_inputs[i] = {}
+
+        nodes = {i: Leaf(i) for i in genome_config.input_keys}
+
+        assert len(leaf_names) == len(genome_config.input_keys)
+        leaves = {name: nodes[i] for name, i in zip(leaf_names, genome_config.input_keys)}
+
+        def map_back(idx, current_node):
+            if isinstance(current_node, Leaf):
+                return
+            conns = node_inputs[idx]
+            for idx, c in enumerate(current_node.children):
+                conns[c.genome_idx] = list(current_node.weights)[idx]
+                map_back(c.genome_idx, c)
+            return
+        if(type(self.cppn) != list):
+            map_back(self.cppn.genome_idx, self.cppn)
+        else:
+            for o in self.cppn:
+                map_back(o.genome_idx, o)
         return
+
 
     def structure_for_rnn(self, hidden_node_coords, conns_1, conns_2, conns_3):
         param_dict = {

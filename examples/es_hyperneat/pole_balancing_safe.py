@@ -80,10 +80,13 @@ def execute_back_prop(genome_dict, champ_key, config):
             es_net = ESNetwork(Substrate(input_cords, output_cords), cppn_2, PARAMS)
             output = es_net.safe_baseline(True)
             es_net.optimizer.zero_grad()
-            loss_val = (champ_output - output).pow(2).mean()
-            loss_val.backward()
-            es_net.optimizer.step()
-            es_net.map_back_to_genome(genome_dict[key])
+            if output.requires_grad == True:
+                loss_val = (champ_output - output).pow(2).mean()
+                loss_val.backward()
+                es_net.optimizer.step()
+                es_net.map_back_to_genome(genome_dict[key], config, leaf_names, ['cppn_out'])
+            else:
+                print("error less fit has no grad attached")
     return 
 
 def activate_net(net,states):
@@ -102,14 +105,14 @@ def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
 
-    total_grad_steps = 1
+    total_grad_steps = 2
 
     config_path = os.path.join(os.path.dirname(__file__), "neat.cfg")
     config = neat.Config(
         neat.DefaultGenome,
         neat.DefaultReproduction,
         neat.DefaultSpeciesSet,
-        
+
         neat.DefaultStagnation,
         config_path,
     )

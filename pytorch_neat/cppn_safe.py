@@ -155,8 +155,9 @@ class Node(torch.nn.Module):
 
 
 class Leaf:
-    def __init__(self, name=None):
+    def __init__(self, genome_idx, name=None):
         self.activs = None
+        self.genome_idx = genome_idx
         self.name = name
 
     def __repr__(self):
@@ -215,7 +216,7 @@ def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
         if i not in node_inputs:
             node_inputs[i] = []
 
-    nodes = {i: Leaf() for i in genome_config.input_keys}
+    nodes = {i: Leaf(i) for i in genome_config.input_keys}
 
     assert len(leaf_names) == len(genome_config.input_keys)
     leaves = {name: nodes[i] for name, i in zip(leaf_names, genome_config.input_keys)}
@@ -239,6 +240,7 @@ def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
             node.bias,
             activation,
             aggregation,
+            genome_idx=idx,
             leaves=leaves,
         )
         return nodes[idx]
@@ -256,53 +258,6 @@ def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
 
     return outputs
 
-
-def map_to_genome(self, genome, config, leaf_names, node_names):
-
-    genome_config = config.genome_config
-    required = required_for_output(
-        genome_config.input_keys, genome_config.output_keys, genome.connections
-    )
-
-    # Gather inputs and expressed connections.
-    node_inputs = {i: {} for i in genome_config.output_keys}
-    for cg in genome.connections.values():
-        if not cg.enabled:
-            continue
-
-        i, o = cg.key
-
-        if o not in required and i not in required:
-            continue
-
-        if i in genome_config.output_keys:
-            continue
-        
-        node_inputs[o][i] = cg.weight
-
-        if i not in node_inputs:
-            node_inputs[i] = {}
-
-    nodes = {i: Leaf() for i in genome_config.input_keys}
-
-    assert len(leaf_names) == len(genome_config.input_keys)
-    leaves = {name: nodes[i] for name, i in zip(leaf_names, genome_config.input_keys)}
-
-    def map_back(idx, current_node):
-        if len(current_node.children) == 0:
-            return
-        node = nodes[idx]
-        conns = node_inputs[idx]
-        for idx, c in enumerate(current_node.children):
-            conns[c.genome_idx] = list(current_node.weights)[idx]
-            map_back(c.genome_idx, c)
-        return
-    if(type(self.cppn) != list):    
-        map_back(self.cppn.genome_idx, self.cppn)
-    else:
-        for o in self.cppn:
-            map_back(o.genome_idx, o)
-    return
 
 
 def clamp_weights_(weights, weight_threshold=0.2, weight_max=3.0):
