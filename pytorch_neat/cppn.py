@@ -236,6 +236,75 @@ def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
 
     return outputs
 
+def create_cppn(genome, config, leaf_names, node_names):
+
+    genome_config = config.genome_config
+    required = required_for_output(
+        genome_config.input_keys, genome_config.output_keys, genome.connections
+    )
+
+    # Gather inputs and expressed connections.
+    node_inputs = {i: [] for i in genome_config.output_keys}
+    for cg in genome.connections.values():
+        if not cg.enabled:
+            continue
+
+        i, o = cg.key
+        if o not in required and i not in required:
+            continue
+
+        if i in genome_config.output_keys:
+            continue
+
+        if o not in node_inputs:
+            node_inputs[o] = [(i, cg.weight)]
+        else:
+            node_inputs[o].append((i, cg.weight))
+
+        if i not in node_inputs:
+            node_inputs[i] = []
+
+    nodes = {i: Leaf() for i in genome_config.input_keys}
+
+    assert len(leaf_names) == len(genome_config.input_keys)
+    leaves = {name: nodes[i] for name, i in zip(leaf_names, genome_config.input_keys)}
+
+    def build_node(idx):
+        if idx in nodes:
+            return nodes[idx]
+        node = genome.nodes[idx]
+        conns = node_inputs[idx]
+        children = [build_node(i) for i, w in conns]
+        weights = [w for i, w in conns]
+        if idx in genome_config.output_keys and output_activation is not None:
+            activation = output_activation
+        else:
+            activation = str_to_activation[node.activation]
+        aggregation = str_to_aggregation[node.aggregation]
+        nodes[idx] = Node(
+            children,
+            weights,
+            node.response,
+            node.bias,
+            activation,
+            aggregation,
+            leaves=leaves,
+        )
+        return nodes[idx]
+
+    for idx in genome_config.output_keys:
+        build_node(idx)
+
+    outputs = [nodes[i] for i in genome_config.output_keys]
+
+    for name in leaf_names:
+        leaves[name].name = name
+
+    for i, name in zip(genome_config.output_keys, node_names):
+        nodes[i].name = name
+
+    return outputs
+
 
 def clamp_weights_(weights, weight_threshold=0.2, weight_max=3.0):
     # TODO: also try LEO

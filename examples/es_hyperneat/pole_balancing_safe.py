@@ -109,6 +109,7 @@ def run(n_generations):
         neat.DefaultGenome,
         neat.DefaultReproduction,
         neat.DefaultSpeciesSet,
+        
         neat.DefaultStagnation,
         config_path,
     )

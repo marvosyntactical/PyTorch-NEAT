@@ -218,6 +218,10 @@ class ESNetwork:
         return root
 
     def map_back_to_genome(self, genome):
+        '''
+        for c in self.cppn.children:
+            print(c)
+        '''
         return
 
     def structure_for_rnn(self, hidden_node_coords, conns_1, conns_2, conns_3):
