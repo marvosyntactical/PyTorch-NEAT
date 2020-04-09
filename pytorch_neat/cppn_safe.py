@@ -49,8 +49,8 @@ class Node(torch.nn.Module):
         self.leaves = leaves
         #self.neuron = torch.nn.Linear(len(weights), 1)
         self.weights = torch.nn.Parameter(torch.Tensor(weights))
-        self.response = response
-        self.bias = bias
+        self.response = torch.nn.Parameter(torch.Tensor([response]))
+        self.bias = torch.nn.Parameter(torch.Tensor([bias]))
         self.activation = activation
         self.activation_name = activation
         self.aggregation = aggregation
@@ -83,7 +83,7 @@ class Node(torch.nn.Module):
         xs: list of torch tensors
         """
         if not xs:
-            return torch.full(shape, self.bias)
+            return torch.full(shape, self.bias.data[0])
         inputs = [w * x for w, x in zip(self.weights, xs)]
         try:
             pre_activs = self.aggregation(inputs)

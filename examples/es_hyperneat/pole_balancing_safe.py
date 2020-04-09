@@ -17,15 +17,15 @@ from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn_safe import create_cppn
 
 
-PARAMS = {"initial_depth": 1,
-        "max_depth": 2,
+PARAMS = {"initial_depth": 2,
+        "max_depth": 3,
         "variance_threshold": 0.8,
         "band_threshold": 0.05,
         "iteration_level": 3,
         "division_threshold": 0.3,
         "max_weight": 34.0,
         "activation": "sigmoid",
-        "safe_baseline_depth": 1}
+        "safe_baseline_depth": 3}
 
 max_env_steps = 200
 
@@ -105,7 +105,7 @@ def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
 
-    total_grad_steps = 2
+    total_grad_steps = 1
 
     config_path = os.path.join(os.path.dirname(__file__), "neat.cfg")
     config = neat.Config(
