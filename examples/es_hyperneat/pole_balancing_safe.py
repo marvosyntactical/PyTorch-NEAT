@@ -25,7 +25,7 @@ PARAMS = {"initial_depth": 2,
         "division_threshold": 0.3,
         "max_weight": 34.0,
         "activation": "sigmoid",
-        "safe_baseline_depth": 3}
+        "safe_baseline_depth": 2}
 
 max_env_steps = 200
 
@@ -105,7 +105,7 @@ def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
 
-    total_grad_steps = 1
+    total_grad_steps = 4
 
     config_path = os.path.join(os.path.dirname(__file__), "neat.cfg")
     config = neat.Config(
@@ -138,8 +138,6 @@ def run(n_generations):
             return
         else:
             execute_back_prop(genome_dict, champ_key, config)
-            for _, genome in genomes:
-                genome.fitness = evaluator.eval_genome(genome, config)
             grad_steps += 1
             eval_genomes(genomes, config, grad_steps)
 
