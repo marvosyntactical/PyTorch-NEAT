@@ -17,7 +17,7 @@ class ESNetwork:
     def __init__(self, substrate, cppn, params):
         self.substrate = substrate
         self.cppn = cppn
-        self.optimizer = torch.optim.Adam(cppn.parameters(), lr=0.0001)
+        self.optimizer = torch.optim.Adam(cppn.parameters(), lr=0.00055)
         self.initial_depth = params["initial_depth"]
         self.max_depth = params["max_depth"]
         self.safe_baseline_depth = params["safe_baseline_depth"]
@@ -243,7 +243,7 @@ class ESNetwork:
             if o not in node_inputs:
                 node_inputs[o] = {}
             
-            node_inputs[o][i] = cg.weight
+            node_inputs[o][i] = cg
             
             if i not in node_inputs:
                 node_inputs[i] = {}
@@ -258,7 +258,7 @@ class ESNetwork:
                 return
             conns = node_inputs[idx]
             for idx, c in enumerate(current_node.children):
-                conns[c.genome_idx] = list(current_node.weights)[idx]
+                conns[c.genome_idx].weight = list(current_node.weights)[idx]
                 map_back(c.genome_idx, c)
             return
         if(type(self.cppn) != list):
