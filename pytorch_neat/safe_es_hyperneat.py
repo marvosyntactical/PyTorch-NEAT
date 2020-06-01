@@ -94,6 +94,17 @@ class ESNetwork:
                     q.extend(p.cs)
         return out
 
+    def prune_all_batched(self, coords, p, outgoing):
+        batch_list = []
+        coord_len = len(coords[0])
+        num_coords = len(coords)
+        for c in p.cs:
+            if(torch.var(c.w) >= self.variance_threshold):
+                self.prune_all_the_tensors_aha(coords, c, outgoing)
+            else:
+                batch_list.append(p.cs.coord)
+        return                  
+
     def prune_all_the_tensors_aha(self, coords, p, outgoing):
         coord_len = len(coords[0])
         num_coords = len(coords)
@@ -186,37 +197,7 @@ class ESNetwork:
         outputs = self.substrate.output_coordinates
 
         root = self.safe_division_pass(inputs, True, with_grad)
-        '''
-        self.prune_all_the_tensors_aha(inputs, root, True)
-        connections1 = connections1.union(self.connections)
-        #print(connections1)
-        for c in connections1:
-            hidden_nodes.append(tuple(c.coord2))
-        hidden_full.extend([c for c in hidden_nodes])
-        self.connections = set()
-        unexplored_hidden_nodes = copy.deepcopy(hidden_nodes)
-        if(len(unexplored_hidden_nodes) != 0):
-            root = self.division_initialization_nd_tensors(unexplored_hidden_nodes, True)
-            self.prune_all_the_tensors_aha(unexplored_hidden_nodes, root, True)
-            connections2 = connections2.union(self.connections)
-            for c in connections2:
-                hidden_nodes.append(tuple(c.coord2))
-            unexplored_hidden_nodes = set(unexplored_hidden_nodes)
-            unexplored_hidden_nodes = set(hidden_nodes) - unexplored_hidden_nodes
-            self.connections = set()
-        hidden_full.extend([c for c in unexplored_hidden_nodes])
-        root = self.division_initialization_nd_tensors(outputs, False)
-        self.prune_all_the_tensors_aha(outputs, root, False)
-        #print(connections1, connections2, connections3)
-        connections3 = connections3.union(self.connections)
-        temp = []
-        for c in connections3:
-            if(c.coord1 in hidden_full):
-                temp.append(c)
-        connections3 = set(temp)
-        self.connections = set()
-        rnn_params = self.structure_for_rnn(hidden_full, connections1, connections2, connections3)
-        '''
+
         return root
 
     def map_back_to_genome(self, genome, config, leaf_names, node_names):
