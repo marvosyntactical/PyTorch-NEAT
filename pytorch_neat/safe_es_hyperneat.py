@@ -65,8 +65,10 @@ class ESNetwork:
             # here we will subdivide to 2^coordlength as described above
             # this allows us to search from +- midpoints on each axis of the input coord
             p.divide_childrens()
-            out_coords = []
-            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
+            if outgoing:
+                weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
+            else:
+                weights = query_torch_cppn_tensors(p.child_coords, coords, outgoing, self.cppn, self.max_weight)
             #print(weights)
             low_var_count = 0
             for x in range(len(coords)):
@@ -133,7 +135,10 @@ class ESNetwork:
                     tree_coords.append(query_coord)
                     tree_coords.append(query_coord2)
                 con = None
-                weights = abs(c.w - query_torch_cppn_tensors(coords, tree_coords, outgoing, self.cppn, self.max_weight))
+                if outgoing:
+                    weights = abs(c.w - query_torch_cppn_tensors(coords, tree_coords, outgoing, self.cppn, self.max_weight))
+                else:
+                    weights = abs(c.w - query_torch_cppn_tensors(tree_coords, coords, outgoing, self.cppn, self.max_weight))                   
                 for x in range(num_coords):
                     # group each dimensional permutation for plus/minus offsets 
                     #print(weights[:,x])
@@ -305,7 +310,7 @@ class BatchednDimensionTree:
         self.child_coords = []
         self.cs = []
         self.signs = self.set_signs() 
-        self.child_weights = 0.0
+        self.child_weights = []
     def set_signs(self):
         return list(itertools.product([1,-1], repeat=len(self.coord)))
     
@@ -314,8 +319,8 @@ class BatchednDimensionTree:
             new_coord = []
             for y in range(len(self.coord)):
                 new_coord.append(self.coord[y] + (self.width/(2*self.signs[x][y])))
-            self.child_coords.append(new_coord)
             newby = BatchednDimensionTree(new_coord, self.width/2, self.lvl+1)
+            self.child_coords.append(new_coord)
             self.cs.append(newby)
     
 # new tree's corresponding connection structure
@@ -335,7 +340,7 @@ class nd_Connection:
         return hash(self.coords + (self.weight,))
 
 def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, with_grad=False):
-    inputs = get_nd_coord_inputs(coords_in, coords_out)
+    inputs = get_nd_coord_inputs(coords_in, coords_out, outgoing)
     in_dict = {"inputs": inputs, "grad": with_grad}
     activs = cppn(input_dict = in_dict)
     return activs

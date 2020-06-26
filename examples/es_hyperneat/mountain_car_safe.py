@@ -6,6 +6,7 @@ import neat
 import gym
 # import torch
 import numpy as np
+import tensorflow as tf
 from pytorch_neat.activations import tanh_activation
 from pytorch_neat.adaptive_linear_net import AdaptiveLinearNet
 from pytorch_neat.multi_env_eval import MultiEnvEvaluator
@@ -27,11 +28,11 @@ def make_net(genome, config, bs):
     params = {"initial_depth": 1,
             "max_depth": 2,
             "variance_threshold": 0.8,
-            "band_threshold": 0.13,
+            "band_threshold": 0.05,
             "iteration_level": 3,
             "division_threshold": 0.3,
             "max_weight": 3.0,
-            "activation": "relu"}
+            "activation": "tanh"}
     input_cords = [(0.1, 0.1, 0.1), (-0.1, -0.1, -0.1)]
     output_cords = [(0.0, 1.0, -1.0), (0.0, 0.0, -1.0), (0.0, -1.0, -1.0)]
     leaf_names = []
@@ -46,7 +47,8 @@ def make_net(genome, config, bs):
 
 def activate_net(net, states):
     outputs = net.activate(states).numpy()
-    return outputs.argmax(axis=1)
+    #print(outputs)
+    return outputs[0] > 0.5
 
 
 @click.command()

@@ -20,7 +20,7 @@ from pytorch_neat.cppn_safe import create_cppn
 PARAMS = {"initial_depth": 2,
         "max_depth": 3,
         "variance_threshold": 0.8,
-        "band_threshold": 0.05,
+        "band_threshold": 0.5,
         "iteration_level": 3,
         "division_threshold": 0.3,
         "max_weight": 34.0,
@@ -38,7 +38,6 @@ def make_env():
 
 def make_net(genome, config, bs):
     #start by setting up a substrate for this bad cartpole boi
-
     input_cords, output_cords, leaf_names = set_initial_coords()
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, PARAMS)
@@ -51,7 +50,7 @@ def set_initial_coords():
     sign = 1
     # we will use a 3 dimensional substrate, coords laid out here
     for i in range(4):
-        input_cords.append((0.0 - i/10*sign, 0.0, 0.0))
+        input_cords.append((0.0, 1.0, 0.0))
         sign *= -1
     leaf_names = []
     for i in range(len(output_cords[0])):
@@ -62,11 +61,10 @@ def set_initial_coords():
 
 def reset_substrate(states):
     input_cords = []
-    output_cords = [(0.0, -1.0, -1.0)]
+    output_cords = [(0.0, -1.0, 0.0)]
     sign = -1
     for i in range(4):
-        input_cords.append((0.0 - i/10*sign, 0.0, 0.0 + (states[i]/10)))
-        sign *= -1
+        input_cords.append((0.0, 0.0, 0.0 + (states[i]/10)))
     return Substrate(input_cords, output_cords)
 
 def execute_back_prop(genome_dict, champ_key, config):
@@ -142,8 +140,8 @@ def run(n_generations):
             eval_genomes(genomes, config, grad_steps)
 
     pop = neat.Population(config)
-    stats = neat.StatisticsReporter()
-    pop.add_reporter(stats)
+    #stats = neat.StatisticsReporter()
+    #pop.add_reporter(stats)
     reporter = neat.StdOutReporter(True)
     pop.add_reporter(reporter)
     #logger = LogReporter("neat.log", evaluator.eval_genome)

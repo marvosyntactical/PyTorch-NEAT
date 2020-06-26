@@ -4,7 +4,6 @@ import numpy as np
 import itertools
 from math import factorial
 from pytorch_neat.recurrent_net import RecurrentNet
-from pytorch_neat.recurrent_safe import SafeRecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 from pytorch_neat.activations import str_to_activation
 import torch
