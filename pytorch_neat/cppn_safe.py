@@ -316,6 +316,10 @@ def get_nd_coord_inputs(in_coords, out_coords, batch_size=None):
     else:
     '''
     for x in range(num_dimens):
-        dimen_arrays[str(x) + "_out"] = out_coords[:, x].unsqueeze(1).expand(n_out, n_in) 
-        dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(0).expand(n_out, n_in)
+        if outgoing:
+            dimen_arrays[str(x) + "_out"] = out_coords[:, x].unsqueeze(1).expand(n_out, n_in) 
+            dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(0).expand(n_out, n_in)
+        else:
+            dimen_arrays[str(x) + "_out"] = out_coords[:, x].unsqueeze(0).expand(n_in, n_out) 
+            dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(1).expand(n_in, n_out)
     return dimen_arrays
