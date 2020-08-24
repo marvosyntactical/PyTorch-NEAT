@@ -7,6 +7,7 @@ from pytorch_neat.recurrent_net import RecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 from pytorch_neat.activations import str_to_activation
 import torch
+
 #encodes a substrate of input and output coords with a cppn, adding 
 #hidden coords along the 
 
@@ -50,10 +51,11 @@ class ESNetwork:
         )
 
     def reset_substrate(self, substrate):
-        #self.connections = set()
+        # self.connections = set()
         self.substrate = substrate
 
     def division_initialization_nd_tensors(self, coords, outgoing):
+        """ Division phase aha """
         root = BatchednDimensionTree([0.0 for x in range(len(coords[0]))], 1.0, 1)
         q = [root]
         while q:
@@ -62,30 +64,37 @@ class ESNetwork:
             # this allows us to search from +- midpoints on each axis of the input coord
             p.divide_childrens()
             out_coords = []
-            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
+            
+            # build CPPN and then query it
+            # from one side of the network
+            # to try to connect all loose ends to each of these ends of the networks
+            weights = query_torch_cppn_tensors(coords,    p.child_coords, outgoing, self.cppn, self.max_weight)
+            #         query_torch_cppn_tensors(coords_in, coords_out,     outgoing, cppn,      max_weight=5.0):
+            
             low_var_count = 0
-            for x in range(len(coords)):
+            for x in range(len(coords)): # x is task domain dimension,e.g. x=1,2 or x=1,2,3
                 if(torch.var(weights[: ,x]) < self.division_threshold):
                     low_var_count += 1 
-            for idx,c in enumerate(p.cs):
+            for idx, c in enumerate(p.cs):
                 c.w = weights[idx]
             if (p.lvl < self.initial_depth) or (p.lvl < self.max_depth and low_var_count != len(coords)):
                     q.extend(p.cs)
         return root
 
     def prune_all_the_tensors_aha(self, coords, p, outgoing):
+        """ Pruning phase aha """
         coord_len = len(coords[0])
         num_coords = len(coords)
         for c in p.cs:
             # where the magic shall bappen
-            if(torch.var(c.w) >= self.variance_threshold):
+            if (torch.var(c.w) >= self.variance_threshold):
                 self.prune_all_the_tensors_aha(coords, c, outgoing)
             else:
                 tree_coords = []
                 tree_coords_2 = []
                 child_array = []
                 sign = 1
-                #gotta be a better way to accomplish this permutation
+                # gotta be a better way to accomplish this permutation
                 for i in range(coord_len):
                     query_coord = []
                     query_coord2 = []
@@ -119,37 +128,58 @@ class ESNetwork:
                         if not con.weight == 0.0:
                             self.connections.add(con)
         return
+    
+    def divide_and_prune_and_update_conns_in_place(self, input_coords, conns_to_update, outgoing=True):
+        # TODO use me
+
+        root = self.division_initialization_nd_tensors(input_coords, outgoing)
+        self.prune_all_the_tensors_aha(input_coords, root, outgoing)
+        conns_to_update = conns_to_update.union(self.connections)
             
     def es_hyperneat_nd_tensors(self):
+        """
+        ES HyperNEAT algo from 
+        http://eplex.cs.ucf.edu/papers/risi_gecco10.pdf
+        is done here
+
+        This function called by create_phenotype_network_nd
+
+        """
+
         inputs = self.substrate.input_coordinates
-        #print(inputs)
         outputs = self.substrate.output_coordinates
+
+
         hidden_full = []
         hidden_nodes, unexplored_hidden_nodes, hidden_ids = [], [], []
         connections1, connections2, connections3 = set(), set(), set()
-        root = self.division_initialization_nd_tensors(inputs, True)
+
+        root = self.division_initialization_nd_tensors(inputs, True) # 1
         self.prune_all_the_tensors_aha(inputs, root, True)
         connections1 = connections1.union(self.connections)
-        #print(connections1)
+
         for c in connections1:
             hidden_nodes.append(tuple(c.coord2))
         hidden_full.extend([c for c in hidden_nodes])
         self.connections = set()
         unexplored_hidden_nodes = copy.deepcopy(hidden_nodes)
         if(len(unexplored_hidden_nodes) != 0):
-            root = self.division_initialization_nd_tensors(unexplored_hidden_nodes, True)
+
+            root = self.division_initialization_nd_tensors(unexplored_hidden_nodes, True) # 2
             self.prune_all_the_tensors_aha(unexplored_hidden_nodes, root, True)
             connections2 = connections2.union(self.connections)
+
             for c in connections2:
                 hidden_nodes.append(tuple(c.coord2))
             unexplored_hidden_nodes = set(unexplored_hidden_nodes)
             unexplored_hidden_nodes = set(hidden_nodes) - unexplored_hidden_nodes
             self.connections = set()
         hidden_full.extend([c for c in unexplored_hidden_nodes])
-        root = self.division_initialization_nd_tensors(outputs, False)
+
+        root = self.division_initialization_nd_tensors(outputs, False) # 3
         self.prune_all_the_tensors_aha(outputs, root, False)
-        #print(connections1, connections2, connections3)
         connections3 = connections3.union(self.connections)
+
         temp = []
         for c in connections3:
             if(c.coord1 in hidden_full):
@@ -206,22 +236,40 @@ class ESNetwork:
 class BatchednDimensionTree:
     
     def __init__(self, in_coord, width, level):
-        self.w = 0.0
-        self.coord = in_coord
-        self.width = width
+    
+        self.w = 0.0 
+        self.coord = in_coord # [0., 0., 0.]
+        self.width = width # side length of hypercube divided by 2
         self.lvl = level
-        self.num_children = 2**len(self.coord)
+        self.num_children = 2**len(self.coord) # binary tree (plebs), quadtree (HyperNEAT), octatree (this dude)
         self.child_coords = []
-        self.cs = []
+        self.cs = [] # what the fuck does this stand for? childrens? FIXME correct?
         self.signs = self.set_signs() 
         self.child_weights = 0.0
+
     def set_signs(self):
+        """ 
+        To iterate over all subcubes easily
+
+        list of tuples of each arrangement of 1,-1 of len(self.coord) (= task dimension)
+        e.g. len(self.coord) = 3:
+            [   
+                (1, 1, 1),
+                (1, 1, -1),
+                (1, -1, 1),
+                (1, -1, -1),
+                (-1, 1, 1),
+                (-1, 1, -1),
+                (-1, -1, 1),
+                (-1, -1, -1)
+            ]
+        """
         return list(itertools.product([1,-1], repeat=len(self.coord)))
     
     def divide_childrens(self):
         for x in range(self.num_children):
             new_coord = []
-            for y in range(len(self.coord)):
+            for y in range(len(self.coord)): 
                 new_coord.append(self.coord[y] + (self.width/(2*self.signs[x][y])))
             self.child_coords.append(new_coord)
             newby = BatchednDimensionTree(new_coord, self.width/2, self.lvl+1)
@@ -239,11 +287,13 @@ class nd_Connection:
         self.weight = weight
         self.coord2 = coord2
     def __eq__(self, other):
+        # used in distance calculation? FIXME confirm this
+        assert False
         return self.coords == other.coords
     def __hash__(self):
         return hash(self.coords + (self.weight,))
 
-def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0):
-    inputs = get_nd_coord_inputs(coords_in, coords_out)
+def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, batch_size=None):
+    inputs = get_nd_coord_inputs(coords_in, coords_out, outgoing, batch_size)
     activs = cppn(input_dict = inputs)
     return activs

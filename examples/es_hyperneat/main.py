@@ -79,8 +79,10 @@ def run(n_generations):
             genome.fitness = evaluator.eval_genome(genome, config)
 
     pop = neat.Population(config)
+
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
+
     reporter = neat.StdOutReporter(True)
     pop.add_reporter(reporter)
     #logger = LogReporter("neat.log", evaluator.eval_genome)

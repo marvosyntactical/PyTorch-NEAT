@@ -17,6 +17,11 @@ import numpy as np
 
 class MultiEnvEvaluator:
     def __init__(self, make_net, activate_net, batch_size=1, max_env_steps=None, make_env=None, envs=None):
+        """
+
+        :param batch_size: how many phenotypes (or genomes) to evaluate at once
+
+        """
         if envs is None:
             self.envs = [make_env() for _ in range(batch_size)]
         else:
@@ -27,6 +32,7 @@ class MultiEnvEvaluator:
         self.max_env_steps = max_env_steps
 
     def eval_genome(self, genome, config, debug=False):
+        # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
         net = self.make_net(genome, config, self.batch_size)
 
         fitnesses = np.zeros(self.batch_size)
@@ -46,7 +52,9 @@ class MultiEnvEvaluator:
             assert len(actions) == len(self.envs)
             for i, (env, action, done) in enumerate(zip(self.envs, actions, dones)):
                 if not done:
-                    state, reward, done, _ = env.step(action)
+                    # openAI gym env.step returns: 
+                    # world state, reward, end of rollout?/dead?/finish?, debug info
+                    state, reward, done, _ = env.step(action) 
                     fitnesses[i] += reward
                     if not done:
                         states[i] = state
