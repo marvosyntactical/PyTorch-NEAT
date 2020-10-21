@@ -55,7 +55,7 @@ class MetaMazeEnv(gym.Env):
         self.maze[self.center, self.center] = 0
 
     def render(self, mode="human"):
-        raise NotImplementedError()
+        raise NotImplementedError(f"TODO implement rendering using seaborn for maze={self.maze}")
 
     def state(self):
         if self.extra_inputs:
@@ -79,6 +79,8 @@ class MetaMazeEnv(gym.Env):
         return state
 
     def step(self, action):
+        # actions:
+        # 0 => up; 1 => down; 2 => left; 3 => right
         assert action in {0, 1, 2, 3}
         self.step_num += 1
         assert self.step_num <= self.episode_len
@@ -102,10 +104,10 @@ class MetaMazeEnv(gym.Env):
             self.col_pos = target_col
 
         if self.row_pos == self.reward_row_pos and self.col_pos == self.reward_col_pos:
-            self.reward += 10.0
+            self.reward += 10.0 # sparse reward at the one destination
             self.row_pos = np.random.randint(1, self.size - 1)
             self.col_pos = np.random.randint(1, self.size - 1)
-            while self.maze[self.row_pos, self.col_pos] == 1:
+            while self.maze[self.row_pos, self.col_pos] == 1: # random search for new non wall starting position
                 self.row_pos = np.random.randint(1, self.size - 1)
                 self.col_pos = np.random.randint(1, self.size - 1)
 
@@ -131,6 +133,29 @@ class MetaMazeEnv(gym.Env):
             (self.reward_row_pos, self.reward_col_pos),
         )
 
+class RandomMazeEnv(MetaMazeEnv):
+    def __init__(self, size=8, seed=42, **kwargs):
+        super().__init__(
+            size=size,
+            **kwargs
+        )
+        self.random_seed = seed
+
+    def make_maze(self):
+        self.maze = np.ones((self.size, self.size))  # ones are walls
+        self.maze[1 : self.size - 1, 1 : self.size - 1].fill(0) # zeros are free to move around in
+        for row in range(1, self.size - 1):
+            for col in range(1, self.size - 1):
+                if row % 2 == 0 and col % 2 == 0:
+                    self.maze[row, col] = 1 # set grid dots
+        self.maze[self.center, self.center] = 0
+    
+    def copy_from(self, other: RandomMazeEnv):
+        # circumvent expensive maze intialization by copying
+        # self.maze and self.seed
+        # from another RandomMazeEnv
+        self.seed = other.seed
+        self.maze = other.maze
 
 class SimpleMazeEnv(MetaMazeEnv):
     def __init__(self, size=4, receptive_size=3, episode_len=250, wall_penalty=0.0):

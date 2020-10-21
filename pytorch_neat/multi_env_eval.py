@@ -22,6 +22,7 @@ class MultiEnvEvaluator:
         :param batch_size: how many phenotypes (or genomes) to evaluate at once
 
         """
+        # use either list of initialized environments or making function
         if envs is None:
             self.envs = [make_env() for _ in range(batch_size)]
         else:
@@ -32,8 +33,12 @@ class MultiEnvEvaluator:
         self.max_env_steps = max_env_steps
 
     def eval_genome(self, genome, config, debug=False):
+        # TODO are these different genomes/nets?
+        # TODO implement NAS rejection sampling here FIXME NOTE TODO
         # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
         net = self.make_net(genome, config, self.batch_size)
+
+        assert False, (net) # FIXME REMOVE ME
 
         fitnesses = np.zeros(self.batch_size)
         states = [env.reset() for env in self.envs]

@@ -22,7 +22,7 @@ max_env_steps = 200
 
 
 def make_env():
-    return gym.make("CartPole-v0")
+    return gym.make("CartPole-v1")
 
 def make_net(genome, config, bs):
     #start by setting up a substrate for this bad cartpole boi
@@ -48,7 +48,8 @@ def make_net(genome, config, bs):
 
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_cords, output_cords), cppn, params)
-    net = net_builder.create_phenotype_network_nd('./genome_vis')
+    net = net_builder.create_phenotype_network_nd()
+
     return net
 
 def activate_net(net, states):

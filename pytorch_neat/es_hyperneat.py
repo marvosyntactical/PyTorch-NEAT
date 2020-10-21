@@ -7,6 +7,7 @@ from pytorch_neat.recurrent_net import RecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 from pytorch_neat.activations import str_to_activation
 import torch
+from random import random
 
 #encodes a substrate of input and output coords with a cppn, adding 
 #hidden coords along the 
@@ -63,35 +64,53 @@ class ESNetwork:
             # here we will subdivide to 2^coordlength as described above
             # this allows us to search from +- midpoints on each axis of the input coord
             p.divide_childrens()
-            out_coords = []
             
             # build CPPN and then query it
             # from one side of the network
             # to try to connect all loose ends to each of these ends of the networks
             weights = query_torch_cppn_tensors(coords,    p.child_coords, outgoing, self.cppn, self.max_weight)
             #         query_torch_cppn_tensors(coords_in, coords_out,     outgoing, cppn,      max_weight=5.0):
+            # weights = num_children x num_coords
             
+            for idx, c in enumerate(p.cs):
+                c.w = weights[idx]
+
             low_var_count = 0
             for x in range(len(coords)): # x is task domain dimension,e.g. x=1,2 or x=1,2,3
                 if(torch.var(weights[: ,x]) < self.division_threshold):
                     low_var_count += 1 
-            for idx, c in enumerate(p.cs):
-                c.w = weights[idx]
-            if (p.lvl < self.initial_depth) or (p.lvl < self.max_depth and low_var_count != len(coords)):
+            
+            if (p.lvl < self.initial_depth) or \
+                (p.lvl < self.max_depth and low_var_count < len(coords)):
+                    # in at least one of the dimensions the children have high variance
+                    # TODO interpretation of variance along specific task dimension,e.g. height or length?
                     q.extend(p.cs)
         return root
 
     def prune_all_the_tensors_aha(self, coords, p, outgoing):
-        """ Pruning phase aha """
+        """ 
+        Pruning phase aha 
+
+        This updates self.connections with weights from all CPPN nodes to the CPPN input nodes ("leaves")
+        
+        :param coords: CPPN tree nodes to establish connections to; this is first called with CPPN input nodes and then recursively done
+        :param p: root of the quadtree that has been made in division_initialization_nd_tensors 
+
+        
+        
+        """
         coord_len = len(coords[0])
         num_coords = len(coords)
+
+        # prune node p's children 
         for c in p.cs:
-            # where the magic shall bappen
+            # where the magic shall happen
             if (torch.var(c.w) >= self.variance_threshold):
+                # "repeat division on children with parent variance greater variance threshold" because this area seems informative
                 self.prune_all_the_tensors_aha(coords, c, outgoing)
+
             else:
                 tree_coords = []
-                tree_coords_2 = []
                 child_array = []
                 sign = 1
                 # gotta be a better way to accomplish this permutation
@@ -109,23 +128,23 @@ class ESNetwork:
                             query_coord2.append(dimen)
                     tree_coords.append(query_coord)
                     tree_coords.append(query_coord2)
+
                 con = None
                 weights = abs(c.w - query_torch_cppn_tensors(coords, tree_coords, outgoing, self.cppn, self.max_weight))
+
                 for x in range(num_coords):
                     # group each dimensional permutation for plus/minus offsets 
-                    #print(weights[:,x])
                     grouped = torch.reshape(weights[: ,x], [weights.shape[0] // 2, 2])
                     mins = torch.min(grouped, dim=1)
-                    #print("mins: ")
-                    #print(mins[0])
+
                     if( torch.max(mins[0]) > self.band_threshold):
                         if outgoing:
                             con = nd_Connection(coords[x], c.coord, c.w[x])
                         else:
                             con = nd_Connection(c.coord, coords[x], c.w[x])
                     if con is not None:
-                        #print(con.weight)
-                        if not con.weight == 0.0:
+                        weight_threshold = 0.0
+                        if con.weight >= weight_threshold:
                             self.connections.add(con)
         return
     
@@ -243,7 +262,7 @@ class BatchednDimensionTree:
         self.lvl = level
         self.num_children = 2**len(self.coord) # binary tree (plebs), quadtree (HyperNEAT), octatree (this dude)
         self.child_coords = []
-        self.cs = [] # what the fuck does this stand for? childrens? FIXME correct?
+        self.cs = [] # 2^dimension BatchednDimensionTrees
         self.signs = self.set_signs() 
         self.child_weights = 0.0
 
@@ -267,9 +286,9 @@ class BatchednDimensionTree:
         return list(itertools.product([1,-1], repeat=len(self.coord)))
     
     def divide_childrens(self):
-        for x in range(self.num_children):
+        for x in range(self.num_children): # 2^dimension quadtree split
             new_coord = []
-            for y in range(len(self.coord)): 
+            for y in range(len(self.coord)):  # task dimensions (2 or 3 or what you want)
                 new_coord.append(self.coord[y] + (self.width/(2*self.signs[x][y])))
             self.child_coords.append(new_coord)
             newby = BatchednDimensionTree(new_coord, self.width/2, self.lvl+1)

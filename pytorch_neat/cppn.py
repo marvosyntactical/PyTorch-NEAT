@@ -399,6 +399,17 @@ def get_nd_coord_inputs(in_coords, out_coords, outgoing, batch_size=None):
                 dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(1).expand(n_in, n_out)
     else:
         for x in range(num_dimens):
+            # previous implementation was analogous to:
+            # outgoing_out = out_coords[:, x].unsqueeze(1).expand(n_out, n_in)
+            # outgoing_in  = out_coords[:, x].unsqueeze(0).expand(n_out, n_in)
+            #
+            # if outgoing:
+            #     dimen_arrays[str(x) + "_out"] = outgoing_out # n_out , n_in^2 
+            #     dimen_arrays[str(x) + "_in"] = outgoing_in # n_out^2 , n_in
+            # else:
+            #     dimen_arrays[str(x) + "_out"] = outgoing_out.transpose(0,1) # n_in^2, n_out
+            #     dimen_arrays[str(x) + "_in"] = outgoing_in.transpose(0,1) # n_in, n_out^2
+
             dimen_arrays[str(x) + "_out"] = out_coords[:, x].unsqueeze(1).expand(n_out, n_in) # n_out , n_in^2 
             dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(0).expand(n_out, n_in) # n_out^2 , n_in
     return dimen_arrays
