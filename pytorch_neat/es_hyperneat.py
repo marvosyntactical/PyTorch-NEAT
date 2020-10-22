@@ -48,7 +48,7 @@ class ESNetwork:
             output_responses = rnn_params["output_responses"],
             hidden_biases = rnn_params["hidden_biases"],
             output_biases = rnn_params["output_biases"],
-            activation= str_to_activation[self.activation_string]
+            activation=str_to_activation[self.activation_string]
         )
 
     def reset_substrate(self, substrate):
@@ -162,7 +162,6 @@ class ESNetwork:
         is done here
 
         This function called by create_phenotype_network_nd
-
         """
 
         inputs = self.substrate.input_coordinates
@@ -305,14 +304,18 @@ class nd_Connection:
         self.coords = coord1 + coord2
         self.weight = weight
         self.coord2 = coord2
+
     def __eq__(self, other):
-        # used in distance calculation? FIXME confirm this
-        assert False
+        # used in genome (?) distance calculation? FIXME confirm this
+        assert False, f"when is this used?"
         return self.coords == other.coords
+
     def __hash__(self):
         return hash(self.coords + (self.weight,))
 
 def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, batch_size=None):
+    # print([type(thing) for thing in [coords_in, coords_out, outgoing]])
+    # assert False, [coords_in, coords_out, outgoing]
     inputs = get_nd_coord_inputs(coords_in, coords_out, outgoing, batch_size)
     activs = cppn(input_dict = inputs)
     return activs

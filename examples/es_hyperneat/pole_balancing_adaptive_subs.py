@@ -12,13 +12,11 @@ from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn import create_cppn
 
-
-
 max_env_steps = 200
 
-
 def make_env():
-    return gym.make("CartPole-v0")
+    env = gym.make("CartPole-v0") # obvservation space: 4; action space: 2
+    return env
 
 def make_net(genome, config, bs):
     #start by setting up a substrate for this bad cartpole boi
@@ -52,11 +50,11 @@ def reset_substrate(states):
     output_cords = [(0.0, -1.0, -1.0)]
     sign = -1
     for i in range(4):
-        input_cords.append((0.0 - i/10*sign, 0.0, 0.0 + (states[i]/100)))
+        input_cords.append((0.0 - i/10*sign, 0.0, states[i]/100.))
         sign *= -1
     return Substrate(input_cords, output_cords)
 
-def activate_net(net, states):
+def activate_net(net, states, **kwargs):
     #print(states)
     #new_sub = reset_substrate(states[0])
     #net.reset_substrate(new_sub)
@@ -93,8 +91,10 @@ def run(n_generations):
     pop.add_reporter(stats)
     reporter = neat.StdOutReporter(True)
     pop.add_reporter(reporter)
-    #logger = LogReporter("neat.log", evaluator.eval_genome)
-    #pop.add_reporter(logger)
+
+    # comment these 2 lines to not log
+    logger = LogReporter("neat.log", evaluator.eval_genome)
+    pop.add_reporter(logger)
 
     pop.run(eval_genomes, n_generations)
 

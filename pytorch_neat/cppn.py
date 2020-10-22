@@ -13,6 +13,9 @@
 #     limitations under the License.
 
 import torch
+from torch import Tensor
+from typing import Dict, List
+Function = type(lambda x:0)
 from neat.graphs import required_for_output
 
 from .activations import str_to_activation
@@ -36,14 +39,14 @@ from .aggregations import str_to_aggregation
 class Node:
     def __init__(
         self,
-        children,
-        weights,
-        response,
-        bias,
-        activation,
-        aggregation,
-        name=None,
-        leaves=None,
+        children: List, # of nodes
+        weights: List[float],
+        response: float,
+        bias: float,
+        activation: Function, # torch function
+        aggregation: Function, # torch function
+        name: str=None,
+        leaves: Dict[str, Tensor]=None,
     ):
         """
         children: list of Nodes,
@@ -67,10 +70,8 @@ class Node:
         self.weights = weights
         self.response = response
         self.bias = bias
-        self.activation = activation
-        self.activation_name = activation
+        self.activation = activation 
         self.aggregation = aggregation
-        self.aggregation_name = aggregation
         self.name = name
         if leaves is not None:
             assert isinstance(leaves, dict)
@@ -83,8 +84,8 @@ class Node:
             self.name,
             self.response,
             self.bias,
-            self.activation_name,
-            self.aggregation_name,
+            self.activation,
+            self.aggregation,
         )
         child_reprs = []
         for w, child in zip(self.weights, self.children):
@@ -95,21 +96,23 @@ class Node:
 
     def activate(self, xs, shape):
         """
-        This is where computation happens (=> its nodewise)
-        TODO: Is this parallelized somewhere ?
+        Neuron firing during forward pass.
 
-        xs: list of torch tensors
-        shape: output tensor shape FIXME shouldnt this be the same as xs.shape??
+        This is where computation happens (=> its nodewise)
+        TODO: At what level is forward pass parallelized? => recurrent_net.py
+
+        xs: list of torch tensors: activations of all incoming nodes FIXME why is this a list of tensors and not scalars???
+        shape: output tensor shape (num outgoing connections?)
         """
         if not xs:
             # no input or all zero, output will just be bias everywhere
             return torch.full(shape, self.bias)
 
-        # for all incoming connections, multiply its weight with incoming data
-        # ("elementwise product")
-        inputs = [w * x for w, x in zip(self.weights, xs)] 
+        # for each incoming graph connections, multiply its weight with the activation of that node 
+        # (elementwise product)
+        inputs = [w * x for w, x in zip(self.weights, xs)] # inputs: num incoming * num outgoing?
         try:
-            # aggregation chosen by NEAT on node creation FIXME correct?
+            # aggregation chosen by NEAT on node creation 
             pre_activs = self.aggregation(inputs) 
 
             # calc node's activation with inputs and bias;
@@ -136,13 +139,13 @@ class Node:
         assert inputs
         if "input_dict" in inputs:
             inputs = inputs["input_dict"]
+        assert type(inputs) == dict, type(inputs)
         shape = list(inputs.values())[0].shape
         self.reset()
         for name in self.leaves.keys():
-            assert (
-                inputs[name].shape == shape
-            ), "Wrong activs shape for leaf {}, {} != {}".format(
-                name, inputs[name].shape, shape
+            assert name in inputs, (name, inputs.keys(), [arr.shape for arr in inputs.values()])
+            assert inputs[name].shape == shape, "Wrong activs shape for leaf {}, {} != {}; inputs: {}".format(
+                name, inputs[name].shape, shape, inputs
             )
             self.leaves[name].set_activs(torch.Tensor(inputs[name]))
         return self.get_activs(shape)
@@ -255,7 +258,7 @@ def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
     # initialize set of all nodes with input nodes ("leaves")
     nodes = {i: Leaf() for i in genome_config.input_keys}
 
-    assert len(leaf_names) == len(genome_config.input_keys)
+    assert len(leaf_names) == len(genome_config.input_keys), (leaf_names, genome_config.input_keys)
     leaves = {name: nodes[i] for name, i in zip(leaf_names, genome_config.input_keys)}
 
     def build_node(idx):
@@ -344,7 +347,7 @@ def get_nd_coord_inputs(in_coords, out_coords, outgoing, batch_size=None):
 
     :param in_coords: 
     :param out_coords: 
-    :param outgoíng: bool, coords outgoing or not? what the fuck does this mean FIXME correct?
+    :param outgoing: bool, coords outgoing or not? what the fuck does this mean FIXME correct?
     :param batch_size: int, how large batches should be
 
     """
@@ -373,8 +376,8 @@ def get_nd_coord_inputs(in_coords, out_coords, outgoing, batch_size=None):
     dimen_arrays = {} 
     
     if batch_size is not None:
-        # FIXME TODO XXX implement this code block lul
-        assert False
+        raise NotImplementedError()# FIXME TODO XXX implement this code block lul
+
         in_coords = in_coords.unsqueeze(0).expand(batch_size, n_in, 2)
         out_coords = out_coords.unsqueeze(0).expand(batch_size, n_out, 2)
 
@@ -409,7 +412,8 @@ def get_nd_coord_inputs(in_coords, out_coords, outgoing, batch_size=None):
             # else:
             #     dimen_arrays[str(x) + "_out"] = outgoing_out.transpose(0,1) # n_in^2, n_out
             #     dimen_arrays[str(x) + "_in"] = outgoing_in.transpose(0,1) # n_in, n_out^2
-
+            
+            # this is just the outgoing version and seems to run fine for whatever reason
             dimen_arrays[str(x) + "_out"] = out_coords[:, x].unsqueeze(1).expand(n_out, n_in) # n_out , n_in^2 
             dimen_arrays[str(x) + "_in"] = in_coords[:, x].unsqueeze(0).expand(n_out, n_in) # n_out^2 , n_in
     return dimen_arrays

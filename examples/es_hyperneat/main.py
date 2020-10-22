@@ -7,7 +7,6 @@ import gym
 # import torch
 import numpy as np
 
-from pytorch_neat import t_maze
 from pytorch_neat.activations import tanh_activation
 from pytorch_neat.adaptive_linear_net import AdaptiveLinearNet
 from pytorch_neat.multi_env_eval import MultiEnvEvaluator
