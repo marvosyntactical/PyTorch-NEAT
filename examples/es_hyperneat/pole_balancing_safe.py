@@ -50,7 +50,7 @@ def set_initial_coords():
     sign = 1
     # we will use a 3 dimensional substrate, coords laid out here
     for i in range(4):
-        input_cords.append((0.0, 1.0, 0.0))
+        input_cords.append((0.0, 1.0, 0.0)) # FIXME should be multiplied by sign probably?
         sign *= -1
     leaf_names = []
     for i in range(len(output_cords[0])):

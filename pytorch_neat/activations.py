@@ -43,6 +43,14 @@ def sin_activation(x):
 def relu_activation(x):
     return F.relu(x)
 
+# hard activations to expand the pool of piecewise linear activations to pick from during evo
+
+def hard_sigmoid_activation(x):
+    return F.hard_sigmoid(x)
+
+def hard_tanh_activation(x):
+    return F.hard_tanh(x)
+
 
 str_to_activation = {
     'sigmoid': sigmoid_activation,
@@ -52,4 +60,10 @@ str_to_activation = {
     'identity': identity_activation,
     'sin': sin_activation,
     'relu': relu_activation,
+    'hard_sigmoid': hard_sigmoid_activation,
+    'hard_tanh': hard_tanh_activation,
 }
+
+piecewise_linear_activations = {'relu', 'hard_sigmoid', 'hard_tanh', 'abs', 'identity'}
+assert set([pw_linear in str_to_activation for pw_linear in piecewise_linear_activations]) == set([True])
+

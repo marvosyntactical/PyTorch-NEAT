@@ -33,12 +33,52 @@ class MultiEnvEvaluator:
         self.max_env_steps = max_env_steps
 
     def eval_genome(self, genome, config, debug=False):
+        # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
+        net = self.make_net(genome, config, self.batch_size)
+
+        fitnesses = np.zeros(self.batch_size)
+        states = [env.reset() for env in self.envs]
+        dones = [False] * self.batch_size
+
+        step_num = 0
+        while True:
+            step_num += 1
+            if self.max_env_steps is not None and step_num == self.max_env_steps:
+                break
+
+            # activate network based on world state
+            # FIXME activate net inputs into single phenotype the world state
+            # but states is batch list of world states??
+            actions = self.activate_net(
+                net, states, debug=bool(debug), step_num=step_num)
+
+            assert len(actions) == len(self.envs)
+            for i, (env, action, done) in enumerate(zip(self.envs, actions, dones)):
+                if not done:
+                    # openAI gym env.step returns: 
+                    # world state, reward, end of rollout?/dead?/finish?, debug info
+                    state, reward, done, _ = env.step(action) 
+                    fitnesses[i] += reward
+                    if not done:
+                        states[i] = state
+                    dones[i] = done
+            if all(dones):
+                break
+
+        return sum(fitnesses) / len(fitnesses)
+
+def CovarianceFilterEvaluator(MultiEnvEvaluator):
+    def __init__(self, *args, **kwargs):
+        super(CovarianceFilterEvaluator, self).__init__(*args, **kwargs)
+    
+    def eval_genome(self, genome, config, debug=False):
+        raise NotImplementedError(f"IMPLEMENT ME")
         # TODO are these different genomes/nets?
         # TODO implement NAS rejection sampling here FIXME NOTE TODO
         # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
         net = self.make_net(genome, config, self.batch_size)
 
-        assert False, (net) # FIXME REMOVE ME
+        assert False, net.cppn
 
         fitnesses = np.zeros(self.batch_size)
         states = [env.reset() for env in self.envs]
