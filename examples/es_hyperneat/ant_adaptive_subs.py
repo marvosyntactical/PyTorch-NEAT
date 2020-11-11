@@ -24,7 +24,7 @@ task_dimensionality = 3
 _test_env = gym.make(task)
 # NOTE interpretation of 111 scalar values? TODO
 state_space = _test_env.env.observation_space.shape[0] # 111
-# NOTE interpretation of output coords:
+# NOTE interpretation of output coords: (aus mujoco antv2 cfg)
 # hip_4, ankle_4, hip_1, ankle_1, hip_2, ankle_2, hip_3, ankle_3 
 action_space = _test_env.env.action_space.shape[0] # 8
 
@@ -44,9 +44,8 @@ output_coords = [
 
 del _test_env
 
-
 def make_env():
-    env = gym.make(task) 
+    env = gym.make(task)
     return env
 
 def get_in_coords(states=None):
@@ -63,10 +62,13 @@ def get_in_coords(states=None):
         coord = math.e**(2j*math.pi*input_idx/state_space)
         assert round((coord.imag**2+coord.real**2)**.5, 1) == 1., (coord.imag, coord.real)
         coord *= state_value_factor # down scale distance from center according to state magnitude
-        
+
         y,z = round(coord.imag,precision),round(coord.real,precision)
         assert not (y == 0.0 and z == 0.0) , (y,z)
         input_coords.append((-1., y, z))
+
+    # assert False, input_coords
+
     return input_coords
 
 def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8):
@@ -93,7 +95,7 @@ def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8):
     assert len(joint_name_dict) == len(output_coords)
 
     leaf_names = []
-    for i in range(len(output_coords)):
+    for i in range(len(output_coords[0])):
         leaf_names.append(str(i) + "_in")
         leaf_names.append(str(i) + "_out")
     input_coords = get_in_coords()
@@ -112,15 +114,9 @@ def activate_net(net, states, **kwargs):
     #new_sub = reset_substrate(states[0])
     #net.reset_substrate(new_sub)
     #network = net.create_phenotype_network_nd() 
-    try:
-        outputs = net.activate(states).numpy()
-    except Exception as e:
-        print(states)
-        print(type(net))
-        print(states[0].shape)
-        exit(e)
+    outputs = net.activate(states).numpy()
     #print(outputs[:,0])
-    return outputs[0] > 0.5
+    return outputs > 0.5 # NOTE warum konvertieren wir hier in bool?
 
 
 @click.command()
@@ -128,7 +124,7 @@ def activate_net(net, states, **kwargs):
 def run(n_generations):
     # Load the config file, which is assumed to live in
     # the same directory as this script.
-    config_path = os.path.join(os.path.dirname(__file__), "ant.cfg")
+    config_path = os.path.join(os.path.dirname(__file__), "_ant.cfg")
     config = neat.Config(
         neat.DefaultGenome,
         neat.DefaultReproduction,
@@ -137,8 +133,15 @@ def run(n_generations):
         config_path,
     )
 
+    # should be 1 for NEAT
+    # but high for NASnosearch pruning
+
+    batch_size = 2
+
+    print(f"running this particular net in {batch_size} environments in parallel")
+
     evaluator = MultiEnvEvaluator(
-        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps
+        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=batch_size
     )
 
     def eval_genomes(genomes, config):

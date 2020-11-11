@@ -13,6 +13,7 @@
 #     limitations under the License.
 
 import torch
+nn=torch.nn
 from torch import Tensor
 from typing import Dict, List
 Function = type(lambda x:0)
@@ -36,7 +37,7 @@ from .aggregations import str_to_aggregation
 # cppn is viewed as directed graph starting at *output* node
 # thus a node's children are its *incoming* nodes
 
-class Node:
+class Node(nn.Module):
     def __init__(
         self,
         children: List, # of nodes
@@ -67,10 +68,10 @@ class Node:
         """
         self.children = children
         self.leaves = leaves
-        self.weights = weights
+        self.weights = Tensor(weights).to(dtype=torch.float32)
         self.response = response
         self.bias = bias
-        self.activation = activation 
+        self.activation = activation
         self.aggregation = aggregation
         self.name = name
         if leaves is not None:
@@ -143,7 +144,7 @@ class Node:
         shape = list(inputs.values())[0].shape
         self.reset()
         for name in self.leaves.keys():
-            assert name in inputs, (name, inputs.keys(), [arr.shape for arr in inputs.values()])
+            assert name in inputs, (name, self.leaves.keys(), inputs.keys(), [arr.shape for arr in inputs.values()])
             assert inputs[name].shape == shape, "Wrong activs shape for leaf {}, {} != {}; inputs: {}".format(
                 name, inputs[name].shape, shape, inputs
             )
@@ -213,7 +214,7 @@ class Leaf:
 def create_cppn(genome, config, leaf_names, node_names, output_activation=None):
     """
     Create cppn as described in HyperNEAT (linked above)
-    
+
     :param genome:
     :param config:
     :param leaf_names: names of  input nodes aka  input keys
@@ -312,8 +313,6 @@ def clamp_weights_(weights, weight_threshold=0.2, weight_max=3.0):
     weights[weights > weight_max] = weight_max
     weights[weights < -weight_max] = -weight_max
 
-
-
 def get_coord_inputs(in_coords, out_coords, batch_size=None):
     """
     get coord inputs.
@@ -373,8 +372,8 @@ def get_nd_coord_inputs(in_coords, out_coords, outgoing, batch_size=None):
 
     # FIXME correct?
 
-    dimen_arrays = {} 
-    
+    dimen_arrays = {}
+
     if batch_size is not None:
         raise NotImplementedError()# FIXME TODO XXX implement this code block lul
 

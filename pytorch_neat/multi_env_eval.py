@@ -52,7 +52,8 @@ class MultiEnvEvaluator:
             actions = self.activate_net(
                 net, states, debug=bool(debug), step_num=step_num)
 
-            assert len(actions) == len(self.envs)
+            assert len(actions) == self.batch_size, (actions, type(actions), len(self.envs))
+
             for i, (env, action, done) in enumerate(zip(self.envs, actions, dones)):
                 if not done:
                     # openAI gym env.step returns: 

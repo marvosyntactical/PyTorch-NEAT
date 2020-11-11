@@ -75,11 +75,11 @@ class RecurrentNet():
             (n_outputs, n_outputs), output_to_output, dtype=dtype)
 
         if n_hidden > 0:
-            self.hidden_responses = torch.tensor(hidden_responses, dtype=dtype)
-            self.hidden_biases = torch.tensor(hidden_biases, dtype=dtype)
+            self.hidden_responses = torch.tensor(hidden_responses).to(dtype=dtype)
+            self.hidden_biases = torch.tensor(hidden_biases).to(dtype=dtype)
         self.output_responses = torch.tensor(
-            output_responses, dtype=dtype)
-        self.output_biases = torch.tensor(output_biases, dtype=dtype)
+            output_responses).to(dtype=dtype)
+        self.output_biases = torch.tensor(output_biases).to(dtype=dtype)
 
         self.reset(batch_size)
 
@@ -113,12 +113,10 @@ class RecurrentNet():
             output_inputs = (self.input_to_output.mm(inputs.t()).t() +
                              self.output_to_output.mm(self.outputs.t()).t())
             if self.n_hidden > 0:
-                output_inputs += self.hidden_to_output.mm(
-                    activs_for_output.t()).t()
+                output_inputs += self.hidden_to_output.mm(activs_for_output.t()).t()
             self.outputs = self.activation(
                 self.output_responses * output_inputs + self.output_biases)
         return self.outputs
-
 
     @staticmethod
     def create(genome, config, batch_size=1, activation=sigmoid_activation,

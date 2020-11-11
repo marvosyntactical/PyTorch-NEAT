@@ -14,8 +14,10 @@ from pytorch_neat.cppn import create_cppn
 
 max_env_steps = 200
 
+
 def make_env():
     env = gym.make("CartPole-v0") # obvservation space: 4; action space: 2
+    state_space = env.env.action_space # 111
     return env
 
 def make_net(genome, config, bs):
