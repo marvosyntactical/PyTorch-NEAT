@@ -1,0 +1,3 @@
+[submodule "pytorch_neat/pytorch-OpCounter"]
+	path = pytorch_neat/pytorch-OpCounter
+	url = https://github.com/marvosyntactical/pytorch-OpCounter

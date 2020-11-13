@@ -1,6 +1,8 @@
 import multiprocessing
 import os
 
+import time
+
 import math
 import click
 import neat
@@ -13,6 +15,8 @@ from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn import create_cppn
 from pytorch_neat.recurrent_net import RecurrentNet
+
+from thop import *
 
 max_env_steps = 200
 task = "Ant-v2"
@@ -110,16 +114,30 @@ def reset_substrate(states):
     input_coords = get_in_coords(states)
     return Substrate(input_coords, output_coords)
 
-def activate_net(net, states, **kwargs):
-    #print(states)
-    #new_sub = reset_substrate(states[0])
-    #net.reset_substrate(new_sub)
-    #network = net.create_phenotype_network_nd() 
-    outputs = net(states) # torch.Tensor
-    outputs = outputs.numpy()
+def activate_net(net, states, track_macs=True, custom_ops=None, verbose=False, **kwargs):
+    """
+    Activates net, prints time taken and optionally prints macs and params of net forward pass
+    """
+
+    # start = time.time()
+
+    if track_macs:
+        outputs, macs, params = profile(net, inputs=(states,), custom_ops=custom_ops, verbose=verbose)
+        outputs = outputs.numpy()
+
+        # print(f"Forward pass took {int(macs)} MAC operations for this net with {int(params)} params")
+        # print(f"Took {round(end-start,5)}s to activate Network.")
+
+    else:
+
+        outputs = net(states) # torch.Tensor
+        outputs = outputs.numpy()
+        macs, params = None, None
 
     # Threshold activation between 0 and 1:
-    return outputs > 0.5 # NOTE warum konvertieren wir hier in bool though?
+    return outputs > 0.5, macs, params # NOTE warum konvertieren wir hier in bool though?
+
+
 
 
 @click.command()
@@ -139,12 +157,12 @@ def run(n_generations):
     # should be 1 for NEAT
     # but high for NASnosearch pruning
 
-    batch_size = 2
+    BATCHSIZE = 5
 
-    print(f"running this particular net in {batch_size} environments in parallel")
+    print(f"evaluating this particular net in {BATCHSIZE} environments in parallel")
 
     evaluator = MultiEnvEvaluator(
-        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=batch_size
+        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=True
     )
 
     def eval_genomes(genomes, config):
@@ -157,8 +175,14 @@ def run(n_generations):
     reporter = neat.StdOutReporter(True)
     pop.add_reporter(reporter)
 
+    antlog = "ant.log"
+    if "DISPLAY" in os.environ:
+        # no display no space saving ~_{°n°}/
+        if os.path.isfile(antlog) and "n" not in input("Remove previous 'ant.log? \n\t[Y/n]"):
+            os.remove(antlog)
+
     # comment these 2 lines to not log
-    logger = LogReporter("neat.log", evaluator.eval_genome)
+    logger = LogReporter(antlog, evaluator, log_macs=True)
     pop.add_reporter(logger)
 
     pop.run(eval_genomes, n_generations)
