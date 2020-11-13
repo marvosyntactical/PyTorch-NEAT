@@ -21,15 +21,21 @@ from neat.reporting import BaseReporter
 
 
 class LogReporter(BaseReporter):
-    def __init__(self, fnm, eval_best, eval_with_debug=False):
-        self.log = open(fnm, "a")
+    def __init__(self, filename, evaluator, eval_with_debug=False, log_macs=False):
+        self.log = open(filename, "a")
         self.generation = None
         self.generation_start_time = None
         self.generation_times = []
         self.num_extinctions = 0
-        self.eval_best = eval_best
         self.eval_with_debug = eval_with_debug
         self.log_dict = {}
+
+        self.evaluator = evaluator
+        self.eval_best = self.evaluator.eval_genome
+        self.log_macs = bool(log_macs)
+        assert not (self.log_macs and not self.evaluator.track_macs), \
+            f"If you want to log MAC operations, your fitness evaluator also has to track them"
+
 
     def start_generation(self, generation):
         self.log_dict["generation"] = generation
@@ -49,6 +55,13 @@ class LogReporter(BaseReporter):
         self.generation_times = self.generation_times[-10:]
         average = np.mean(self.generation_times)
         self.log_dict["time_elapsed_avg"] = average
+
+        if self.log_macs:
+            try:
+                self.log_dict["cumulative_macs"] = self.evaluator.CUMMACS
+                self.evaluator.CUMMACS = 0 # NOTE only track per generation; TODO add as option
+            except AttributeError as AE:
+                raise Exception(f"{AE}; if this logger is initialized with log_macs=True, its evaluator must also be intitialized with track_macs=True")
 
         self.log_dict["n_extinctions"] = self.num_extinctions
 

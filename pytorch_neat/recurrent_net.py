@@ -30,20 +30,32 @@ import json
 
 
 def create_linear_layer_from_conns(shape, conns, dtype=torch.float64, bias=None):
-    """ create nn.Linear(*shape)"""
+    """ 
+    create nn.Linear(*shape) layer with specified connection weights
+    dtype should be differentiable
+    for RecurrentNet, bias should be None atm; since for several Linear layers
+    a global bias gets added only afterwards
+    """
+    assert dtype.is_floating_point or dtype.is_floating_point, dtype
+
     mat = torch.zeros(shape, dtype=dtype)
+    layer = nn.Linear(*shape, bias=bias)
+
     idxs, weights = conns
     if len(idxs) == 0:
-        return mat
-    rows, cols = np.array(idxs).transpose()
-    w = torch.tensor(
-        weights, dtype=dtype)
+        # all 0 layer
+        layer.weight.data = mat
+    else:
+        # insert specified connection weights
+        rows, cols = np.array(idxs).transpose()
+        w = torch.tensor(
+            weights, dtype=dtype)
 
-    mat[torch.LongTensor(rows), torch.LongTensor(cols)] = w
+        mat[torch.LongTensor(rows), torch.LongTensor(cols)] = w
 
-    layer = nn.Linear(*shape, bias=bias)
     layer.weight.data = mat
     assert isinstance(layer, nn.Module), type(layer)
+    # input((type(layer), dtype, len(weights)))
     return layer
 
 class RecurrentNet(nn.Module):
@@ -77,11 +89,11 @@ class RecurrentNet(nn.Module):
                 (n_hidden, n_outputs), output_to_hidden, dtype=dtype)
             self.hidden_to_output = create_linear_layer_from_conns(
                 (n_outputs, n_hidden), hidden_to_output, dtype=dtype)
+        
         self.input_to_output = create_linear_layer_from_conns(
             (n_outputs, n_inputs), input_to_output, dtype=dtype)
         self.output_to_output = create_linear_layer_from_conns(
             (n_outputs, n_outputs), output_to_output, dtype=dtype)
-        assert False, type(self.input_to_output)
 
         if n_hidden > 0:
             self.hidden_responses = torch.tensor(hidden_responses).to(dtype=dtype)

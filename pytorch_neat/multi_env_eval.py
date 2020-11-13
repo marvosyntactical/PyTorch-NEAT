@@ -16,7 +16,7 @@ import numpy as np
 
 
 class MultiEnvEvaluator:
-    def __init__(self, make_net, activate_net, batch_size=1, max_env_steps=None, make_env=None, envs=None):
+    def __init__(self, make_net, activate_net, batch_size=1, max_env_steps=None, make_env=None, envs=None, track_macs=False):
         """
 
         :param batch_size: how many phenotypes (or genomes) to evaluate at once
@@ -31,6 +31,9 @@ class MultiEnvEvaluator:
         self.activate_net = activate_net
         self.batch_size = batch_size
         self.max_env_steps = max_env_steps
+        self.track_macs = bool(track_macs)
+        if self.track_macs:
+            self.CUMMACS = 0
 
     def eval_genome(self, genome, config, debug=False):
         # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
@@ -49,8 +52,10 @@ class MultiEnvEvaluator:
             # activate network based on world state
             # FIXME activate net inputs into single phenotype the world state
             # but states is batch list of world states??
-            actions = self.activate_net(
-                net, states, debug=bool(debug), step_num=step_num)
+            actions, macs, _params = self.activate_net(
+                net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+            if self.track_macs:
+                self.CUMMACS += int(macs)
 
             assert len(actions) == self.batch_size, (actions, type(actions), len(self.envs))
 
