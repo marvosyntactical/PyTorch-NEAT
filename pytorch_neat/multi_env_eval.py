@@ -34,7 +34,7 @@ class MultiEnvEvaluator:
 
     def eval_genome(self, genome, config, debug=False):
         # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
-        net = self.make_net(genome, config, self.batch_size)
+        net = self.make_net(genome, config, self.batch_size) # net is torch module?
 
         fitnesses = np.zeros(self.batch_size)
         states = [env.reset() for env in self.envs]

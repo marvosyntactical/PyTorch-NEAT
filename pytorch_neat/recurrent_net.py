@@ -13,6 +13,7 @@
 #     limitations under the License.
 
 import torch
+import torch.nn as nn
 import numpy as np
 from .activations import str_to_activation, sigmoid_activation
 import json
@@ -28,7 +29,8 @@ import json
 #     return mat
 
 
-def dense_from_coo(shape, conns, dtype=torch.float64):
+def create_linear_layer_from_conns(shape, conns, dtype=torch.float64, bias=None):
+    """ create nn.Linear(*shape)"""
     mat = torch.zeros(shape, dtype=dtype)
     idxs, weights = conns
     if len(idxs) == 0:
@@ -36,10 +38,15 @@ def dense_from_coo(shape, conns, dtype=torch.float64):
     rows, cols = np.array(idxs).transpose()
     w = torch.tensor(
         weights, dtype=dtype)
-    mat[torch.LongTensor(rows), torch.LongTensor(cols)] = w
-    return mat
 
-class RecurrentNet():
+    mat[torch.LongTensor(rows), torch.LongTensor(cols)] = w
+
+    layer = nn.Linear(*shape, bias=bias)
+    layer.weight.data = mat
+    assert isinstance(layer, nn.Module), type(layer)
+    return layer
+
+class RecurrentNet(nn.Module):
     def __init__(self, n_inputs, n_hidden, n_outputs,
                  input_to_hidden, hidden_to_hidden, output_to_hidden,
                  input_to_output, hidden_to_output, output_to_output,
@@ -50,6 +57,7 @@ class RecurrentNet():
                  activation=str_to_activation["sigmoid"],
                  n_internal_steps=1,
                  dtype=torch.float64):
+        super(RecurrentNet, self).__init__()
 
         self.use_current_activs = use_current_activs
         self.activation = activation
@@ -61,18 +69,19 @@ class RecurrentNet():
         self.n_outputs = n_outputs
 
         if n_hidden > 0:
-            self.input_to_hidden = dense_from_coo(
+            self.input_to_hidden = create_linear_layer_from_conns(
                 (n_hidden, n_inputs), input_to_hidden, dtype=dtype)
-            self.hidden_to_hidden = dense_from_coo(
+            self.hidden_to_hidden = create_linear_layer_from_conns(
                 (n_hidden, n_hidden), hidden_to_hidden, dtype=dtype)
-            self.output_to_hidden = dense_from_coo(
+            self.output_to_hidden = create_linear_layer_from_conns(
                 (n_hidden, n_outputs), output_to_hidden, dtype=dtype)
-            self.hidden_to_output = dense_from_coo(
+            self.hidden_to_output = create_linear_layer_from_conns(
                 (n_outputs, n_hidden), hidden_to_output, dtype=dtype)
-        self.input_to_output = dense_from_coo(
+        self.input_to_output = create_linear_layer_from_conns(
             (n_outputs, n_inputs), input_to_output, dtype=dtype)
-        self.output_to_output = dense_from_coo(
+        self.output_to_output = create_linear_layer_from_conns(
             (n_outputs, n_outputs), output_to_output, dtype=dtype)
+        assert False, type(self.input_to_output)
 
         if n_hidden > 0:
             self.hidden_responses = torch.tensor(hidden_responses).to(dtype=dtype)
@@ -92,7 +101,7 @@ class RecurrentNet():
         self.outputs = torch.zeros(
             batch_size, self.n_outputs, dtype=self.dtype)
 
-    def activate(self, inputs):
+    def forward(self, inputs):
         '''
         inputs: (batch_size, n_inputs)
 
@@ -102,18 +111,21 @@ class RecurrentNet():
             inputs = torch.tensor(inputs, dtype=self.dtype)
             activs_for_output = self.activs
             if self.n_hidden > 0:
+                # recurrent loopdeloop
                 for _ in range(self.n_internal_steps):
-                    self.activs = self.activation(self.hidden_responses * (
-                        self.input_to_hidden.mm(inputs.t()).t() +
-                        self.hidden_to_hidden.mm(self.activs.t()).t() +
-                        self.output_to_hidden.mm(self.outputs.t()).t()) +
+                    self.activs = self.activation(
+                        self.hidden_responses * (
+                            self.input_to_hidden(inputs) +
+                            self.hidden_to_hidden(self.activs) +
+                            self.output_to_hidden(self.outputs)
+                            ) +
                         self.hidden_biases)
                 if self.use_current_activs:
                     activs_for_output = self.activs 
-            output_inputs = (self.input_to_output.mm(inputs.t()).t() +
-                             self.output_to_output.mm(self.outputs.t()).t())
+            output_inputs = (self.input_to_output(inputs) +
+                             self.output_to_output(self.outputs))
             if self.n_hidden > 0:
-                output_inputs += self.hidden_to_output.mm(activs_for_output.t()).t()
+                output_inputs += self.hidden_to_output(activs_for_output)
             self.outputs = self.activation(
                 self.output_responses * output_inputs + self.output_biases)
         return self.outputs
@@ -211,7 +223,6 @@ class RecurrentNet():
                             activation=activation,
                             use_current_activs=use_current_activs,
                             n_internal_steps=n_internal_steps)
-
 
     @staticmethod
     def create_from_es(in_nodes, out_nodes, node_evals, batch_size=1, activation=sigmoid_activation,

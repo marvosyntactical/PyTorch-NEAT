@@ -12,6 +12,7 @@ from pytorch_neat.neat_reporter import LogReporter
 from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn import create_cppn
+from pytorch_neat.recurrent_net import RecurrentNet
 
 max_env_steps = 200
 task = "Ant-v2"
@@ -71,7 +72,7 @@ def get_in_coords(states=None):
 
     return input_coords
 
-def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8):
+def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
     #start by setting up a substrate for this bad ant boi
     params = {"initial_depth": 1,
             "max_depth": 5,
@@ -103,7 +104,7 @@ def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8):
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_coords, output_coords), cppn, params)
     net = net_builder.create_phenotype_network_nd('./genome_vis')
-    return net
+    return net # RecurrentNet ((not necessarily actually recurrent))
 
 def reset_substrate(states):
     input_coords = get_in_coords(states)
@@ -114,9 +115,11 @@ def activate_net(net, states, **kwargs):
     #new_sub = reset_substrate(states[0])
     #net.reset_substrate(new_sub)
     #network = net.create_phenotype_network_nd() 
-    outputs = net.activate(states).numpy()
-    #print(outputs[:,0])
-    return outputs > 0.5 # NOTE warum konvertieren wir hier in bool?
+    outputs = net(states) # torch.Tensor
+    outputs = outputs.numpy()
+
+    # Threshold activation between 0 and 1:
+    return outputs > 0.5 # NOTE warum konvertieren wir hier in bool though?
 
 
 @click.command()
