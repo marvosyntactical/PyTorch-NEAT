@@ -9,7 +9,7 @@ import neat
 import gym
 # import torch
 import numpy as np
-from pytorch_neat.multi_env_eval import MultiEnvEvaluator
+from pytorch_neat.multi_env_eval import CovarianceFilterEvaluator
 from pytorch_neat.neat_reporter import LogReporter
 from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
@@ -18,7 +18,7 @@ from pytorch_neat.recurrent_net import RecurrentNet
 
 from thop import *
 
-max_env_steps = 200
+max_env_steps = 30 # TODO find where this is actually set
 task = "Ant-v2"
 
 # phenotype networks map states (input nodes) to actions (output nodes)
@@ -76,7 +76,7 @@ def get_in_coords(states=None):
 
     return input_coords
 
-def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
+def make_net(genome, config, batch_size, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
     #start by setting up a substrate for this bad ant boi
     params = {"initial_depth": 1,
             "max_depth": 5,
@@ -107,7 +107,7 @@ def make_net(genome, config, bs, state_space_dim=111, action_space_dim=8) -> Rec
 
     [cppn] = create_cppn(genome, config, leaf_names, ['cppn_out'])
     net_builder = ESNetwork(Substrate(input_coords, output_coords), cppn, params)
-    net = net_builder.create_phenotype_network_nd('./genome_vis')
+    net = net_builder.create_phenotype_network_nd(batch_size=batch_size)
     return net # RecurrentNet ((not necessarily actually recurrent))
 
 def reset_substrate(states):
@@ -123,7 +123,6 @@ def activate_net(net, states, track_macs=True, custom_ops=None, verbose=False, *
 
     if track_macs:
         outputs, macs, params = profile(net, inputs=(states,), custom_ops=custom_ops, verbose=verbose)
-        outputs = outputs.numpy()
 
         # print(f"Forward pass took {int(macs)} MAC operations for this net with {int(params)} params")
         # print(f"Took {round(end-start,5)}s to activate Network.")
@@ -131,11 +130,10 @@ def activate_net(net, states, track_macs=True, custom_ops=None, verbose=False, *
     else:
 
         outputs = net(states) # torch.Tensor
-        outputs = outputs.numpy()
         macs, params = None, None
 
     # Threshold activation between 0 and 1:
-    return outputs > 0.5, macs, params # NOTE warum konvertieren wir hier in bool though?
+    return outputs, macs, params # NOTE warum konvertieren wir hier in bool though?
 
 
 
@@ -161,7 +159,7 @@ def run(n_generations):
 
     print(f"evaluating this particular net in {BATCHSIZE} environments in parallel")
 
-    evaluator = MultiEnvEvaluator(
+    evaluator = CovarianceFilterEvaluator(
         make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=True
     )
 
@@ -176,8 +174,8 @@ def run(n_generations):
     pop.add_reporter(reporter)
 
     antlog = "ant.log"
-    if "DISPLAY" in os.environ:
-        # no display no space saving ~_{°n°}/
+    # no display no space saving ~_{°n°}/
+    if 0 and "DISPLAY" in os.environ:
         if os.path.isfile(antlog) and "n" not in input("Remove previous 'ant.log? \n\t[Y/n]"):
             os.remove(antlog)
 

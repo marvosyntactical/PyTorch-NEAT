@@ -32,7 +32,7 @@ class ESNetwork:
 
 
     # creates phenotype with n dimensions
-    def create_phenotype_network_nd(self, filename=None):
+    def create_phenotype_network_nd(self, batch_size=1):
         rnn_params = self.es_hyperneat_nd_tensors()
         return RecurrentNet(
             n_inputs = rnn_params["n_inputs"],
@@ -48,7 +48,8 @@ class ESNetwork:
             output_responses = rnn_params["output_responses"],
             hidden_biases = rnn_params["hidden_biases"],
             output_biases = rnn_params["output_biases"],
-            activation=str_to_activation[self.activation_string]
+            activation=str_to_activation[self.activation_string],
+            batch_size=batch_size
         )
 
     def reset_substrate(self, substrate):
@@ -220,10 +221,8 @@ class ESNetwork:
             "input_to_output": ([],[]),
             "output_to_output": ([],[])
         }
-        temp_nodes = []
-        temp_weights = []
+        temp_nodes, temp_weights = [], []
         for c in conns_1:
-            #print(c.coord1, c.coord2)
             temp_nodes.append((
                 hidden_node_coords.index(c.coord2),
                 self.substrate.input_coordinates.index(c.coord1)

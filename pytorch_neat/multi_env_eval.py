@@ -13,6 +13,7 @@
 #     limitations under the License.
 
 import numpy as np
+import torch
 
 
 class MultiEnvEvaluator:
@@ -43,6 +44,8 @@ class MultiEnvEvaluator:
         states = [env.reset() for env in self.envs]
         dones = [False] * self.batch_size
 
+        __RENDER__ = True
+
         step_num = 0
         while True:
             step_num += 1
@@ -64,6 +67,9 @@ class MultiEnvEvaluator:
                     # openAI gym env.step returns: 
                     # world state, reward, end of rollout?/dead?/finish?, debug info
                     state, reward, done, _ = env.step(action) 
+                    if __RENDER__ and self.batch_size <= 5:
+                        # beware of the big bad wolf
+                        env.render()
                     fitnesses[i] += reward
                     if not done:
                         states[i] = state
@@ -73,39 +79,98 @@ class MultiEnvEvaluator:
 
         return sum(fitnesses) / len(fitnesses)
 
-def CovarianceFilterEvaluator(MultiEnvEvaluator):
-    def __init__(self, *args, **kwargs):
-        super(CovarianceFilterEvaluator, self).__init__(*args, **kwargs)
-    
-    def eval_genome(self, genome, config, debug=False):
-        raise NotImplementedError(f"IMPLEMENT ME")
-        # TODO are these different genomes/nets?
-        # TODO implement NAS rejection sampling here FIXME NOTE TODO
-        # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
-        net = self.make_net(genome, config, self.batch_size)
+class CovarianceFilterEvaluator(MultiEnvEvaluator):
+    """
+    Try to use https://github.com/BayesWatch/nas-without-training/blob/master/search.py to prune
+    """
+    def __init__(self, make_net, activate_net, batch_size=1, max_env_steps=None, make_env=None, envs=None, track_macs=False):
+        """
+        :param batch_size: how many phenotypes (or genomes) to evaluate at once
+        """
+        # use either list of initialized environments or making function
+        if envs is None:
+            self.envs = [make_env() for _ in range(batch_size)]
+        else:
+            assert len(envs) == batch_size
+            self.envs = envs
+        self.make_net = make_net
+        self.activate_net = activate_net
+        self.batch_size = batch_size
+        self.max_env_steps = max_env_steps
+        self.track_macs = bool(track_macs)
+        if self.track_macs:
+            self.CUMMACS = 0
 
-        assert False, net.cppn
+    def eval_genome(self, genome, config, debug=False):
+        # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
+        net = self.make_net(genome, config, self.batch_size) # net is torch module?
 
         fitnesses = np.zeros(self.batch_size)
-        states = [env.reset() for env in self.envs]
+        states = torch.Tensor([env.reset() for env in self.envs])
         dones = [False] * self.batch_size
 
         step_num = 0
+
+        __RENDER__ = True
+        track_jacobian_until = 3
+        correlation_threshold = .5  # TODO determine from samples
+        correlation_scores = []
+        BAD_FITNESS_DEFAULT = -200
+
+        net.require_grad(True) # start loop in grad mode
         while True:
             step_num += 1
             if self.max_env_steps is not None and step_num == self.max_env_steps:
                 break
-            if debug:
-                actions = self.activate_net(
-                    net, states, debug=True, step_num=step_num)
+
+            if step_num <= track_jacobian_until:
+                # prep inputs for getting jacobian
+                states.requires_grad = True
+                net.zero_grad()
+
+                # activate network based on world state
+                actions, macs, _params = self.activate_net(
+                    net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+
+                # compute backward pass to get jacobian of params w.r.t. to x
+                actions.backward(torch.ones_like(actions))
+                jacobian = states.grad.clone().detach()
+                jacobian = jacobian.reshape(jacobian.size(0), -1).cpu().numpy()
+                correlation_score = eval_score(jacobian)
+                correlation_scores += correlation_score
             else:
-                actions = self.activate_net(net, states)
-            assert len(actions) == len(self.envs)
+                with torch.no_grad():
+                    # normal action calculation
+                    # dont need to store gradients anymore now
+                    actions, macs, _params = self.activate_net(
+                        net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+
+            if self.track_macs:
+                self.CUMMACS += int(macs)
+            
+            if step_num == track_jacobian_until:
+                # evaluate fitnesses and if too low, like, don't even simulate any further, dawg
+                assert len(correlation_scores) == track_jacobian_until, (correlation_scores, track_jacobian_until)
+                average_correlation_score = sum(correlation_scores) / track_jacobian_until
+                assert False, average_correlation_score
+                print(f"after evaluating this net for {track_jacobian_until} times, we decide")
+                if average_correlation_score < correlation_threshold:
+                    print(f"it is not worth the effort, as it got only {average_correlation_score} on average during these evaluations")
+                    return BAD_FITNESS_DEFAULT
+                print(f"we should investigate it further, as it got {average_correlation_score}...")
+                states.requires_grad = False # dont need to save grads on these anymore now
+                net.require_grad=False
+
+            assert len(actions) == self.batch_size, (actions, type(actions), len(self.envs))
+
             for i, (env, action, done) in enumerate(zip(self.envs, actions, dones)):
                 if not done:
                     # openAI gym env.step returns: 
                     # world state, reward, end of rollout?/dead?/finish?, debug info
                     state, reward, done, _ = env.step(action) 
+                    if __RENDER__ and self.batch_size <= 5:
+                        # beware of the big bad wolf
+                        env.render()
                     fitnesses[i] += reward
                     if not done:
                         states[i] = state
@@ -114,3 +179,18 @@ def CovarianceFilterEvaluator(MultiEnvEvaluator):
                 break
 
         return sum(fitnesses) / len(fitnesses)
+
+
+def eval_score(jacob):
+    """https://arxiv.org/pdf/2006.04647.pdf"""
+
+    corrs = np.corrcoef(jacob)
+    v, _  = np.linalg.eig(corrs)
+    k = 1e-5
+    return -np.sum(np.log(v + k) + 1./(v + k))
+
+
+
+
+
+

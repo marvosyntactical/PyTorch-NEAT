@@ -63,7 +63,9 @@ def activate_net(net, states, **kwargs):
     #network = net.create_phenotype_network_nd() 
     outputs = net.activate(states).numpy()
     #print(outputs[:,0])
-    return outputs[0] > 0.5
+    outputs = outputs[0] > 0.5
+    assert False, outputs
+    return outputs
 
 
 @click.command()
@@ -95,7 +97,7 @@ def run(n_generations):
     pop.add_reporter(reporter)
 
     # comment these 2 lines to not log
-    logger = LogReporter("neat.log", evaluator.eval_genome)
+    logger = LogReporter("neat.log", evaluator)
     pop.add_reporter(logger)
 
     pop.run(eval_genomes, n_generations)
