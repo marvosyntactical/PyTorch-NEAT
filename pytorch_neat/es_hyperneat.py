@@ -2,7 +2,6 @@ import neat
 import copy
 import numpy as np
 import itertools
-from math import factorial
 from pytorch_neat.recurrent_net import RecurrentNet
 from pytorch_neat.cppn import get_nd_coord_inputs
 from pytorch_neat.activations import str_to_activation
@@ -21,7 +20,7 @@ class ESNetwork:
         self.max_depth = params["max_depth"]
         self.variance_threshold = params["variance_threshold"]
         self.band_threshold = params["band_threshold"]
-        self.iteration_level = params["iteration_level"]
+        self.iteration_level = params["iteration_level"] # what does this do?
         self.division_threshold = params["division_threshold"]
         self.max_weight = params["max_weight"]
         self.connections = set()

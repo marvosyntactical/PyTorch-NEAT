@@ -15,6 +15,7 @@ from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn import create_cppn
 from pytorch_neat.recurrent_net import RecurrentNet
+from pytorch_neat.activations import piecewise_linear_activations
 
 from thop import *
 
@@ -77,14 +78,18 @@ def get_in_coords(states=None):
 
 def make_net(genome, config, batch_size, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
     #start by setting up a substrate for this bad ant boi
-    params = {"initial_depth": 1,
-            "max_depth": 5,
-            "variance_threshold": 0.8,
-            "band_threshold": 0.05,
-            "iteration_level": 3,
-            "division_threshold": 0.3,
-            "max_weight": 34.0,
-            "activation": "sigmoid"}
+    params = {
+        "initial_depth": 1,
+        "max_depth": 5,
+        "variance_threshold": 0.8,
+        "band_threshold": 0.05,
+        "iteration_level": 3,
+        "division_threshold": 0.3,
+        "max_weight": 10.0,
+        "activation": "relu"
+    }
+    assert params["activation"] in piecewise_linear_activations, f"for NAS without search, network activation needs to be piecewise linear"
+
     # FIXME this can just be list
     joint_name_dict = {
         0: "hip_4",
