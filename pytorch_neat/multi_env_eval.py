@@ -56,7 +56,7 @@ class MultiEnvEvaluator:
             # FIXME activate net inputs into single phenotype the world state
             # but states is batch list of world states??
             actions, macs, _params = self.activate_net(
-                net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+                net, states, prev_activs=prev_activs, prev_outputs=prev_outputs, step_num=step_num, track_macs=self.track_macs)
             if self.track_macs:
                 self.CUMMACS += int(macs)
 
@@ -101,12 +101,12 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
         if self.track_macs:
             self.CUMMACS = 0
 
-    def eval_genome(self, genome, config, debug=False):
+    def eval_genome(self, genome, config):
         # evaluate self.batch_size genomes simultaneously stepwise in multiple openai gym envs until all done 
         net = self.make_net(genome, config, self.batch_size) # net is torch module?
 
         fitnesses = np.zeros(self.batch_size)
-        states = torch.Tensor([env.reset() for env in self.envs])
+        states_trajectory = [torch.Tensor([env.reset() for env in self.envs]).to(dtype=net.dtype)]
         dones = [False] * self.batch_size
 
         step_num = 0
@@ -115,35 +115,63 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
         track_jacobian_until = 3
         correlation_threshold = .5  # TODO determine from samples
         correlation_scores = []
-        BAD_FITNESS_DEFAULT = -200
+        BAD_JACOBIAN_FITNESS = -200
 
-        net.require_grad(True) # start loop in grad mode
+
+        net.set_grad(True)
+        prev_activs, prev_outputs = net.init_activs_and_outputs()
+        
         while True:
             step_num += 1
             if self.max_env_steps is not None and step_num == self.max_env_steps:
                 break
 
+            ##### vvv https://arxiv.org/pdf/2006.04647.pdf vvv ####
+            states = states_trajectory[-1]
+
             if step_num <= track_jacobian_until:
                 # prep inputs for getting jacobian
-                states.requires_grad = True
+                states.requires_grad_(True)
                 net.zero_grad()
 
                 # activate network based on world state
-                actions, macs, _params = self.activate_net(
-                    net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+                outputs, macs, _params = self.activate_net(
+                    net, inputs=(states, prev_activs, prev_outputs), step_num=step_num, track_macs=self.track_macs)
+                prev_outputs, prev_activs = outputs[0], outputs[1]
 
                 # compute backward pass to get jacobian of params w.r.t. to x
-                actions.backward(torch.ones_like(actions))
-                jacobian = states.grad.clone().detach()
-                jacobian = jacobian.reshape(jacobian.size(0), -1).cpu().numpy()
-                correlation_score = eval_score(jacobian)
-                correlation_scores += correlation_score
+                try:
+                    prev_outputs.backward(torch.ones_like(prev_outputs), retain_graph=True)
+                except RuntimeError as e:
+                    print(correlation_scores)
+                    raise e
+
+                # forward
+                assert states.requires_grad == True
+                for p in net.parameters():
+                    assert p.requires_grad == True, p
+                assert prev_activs == None or prev_activs.requires_grad == True
+                assert prev_outputs.requires_grad == True
+
+                assert states.grad is not None, "somehow the gradient from the RNN outputs was not backpropped to the inputs"
+
+                jacobian = states.grad.clone().detach().reshape(self.batch_size, -1).cpu().numpy()
+
+                try:
+                    correlation_score = eval_score(jacobian)
+                except Exception as e:
+                    print(e)
+                    correlation_score = np.nan
+                correlation_scores += [correlation_score]
+
             else:
+                # normal action calculation
+                # dont need to store gradients anymore now so stop doing it to be speed
                 with torch.no_grad():
-                    # normal action calculation
-                    # dont need to store gradients anymore now
-                    actions, macs, _params = self.activate_net(
-                        net, states, debug=bool(debug), step_num=step_num, track_macs=self.track_macs)
+                    # activate network based on world state
+                    outputs, macs, _params = self.activate_net(
+                        net, inputs=(states, prev_activs, prev_outputs), step_num=step_num, track_macs=self.track_macs)
+                    prev_outputs, prev_activs = outputs[0], outputs[1]
 
             if self.track_macs:
                 self.CUMMACS += int(macs)
@@ -153,15 +181,28 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
                 assert len(correlation_scores) == track_jacobian_until, (correlation_scores, track_jacobian_until)
                 average_correlation_score = sum(correlation_scores) / track_jacobian_until
                 assert False, average_correlation_score
+
                 print(f"after evaluating this net for {track_jacobian_until} times, we decide")
                 if average_correlation_score < correlation_threshold:
                     print(f"it is not worth the effort, as it got only {average_correlation_score} on average during these evaluations")
-                    return BAD_FITNESS_DEFAULT
-                print(f"we should investigate it further, as it got {average_correlation_score}...")
-                states.requires_grad = False # dont need to save grads on these anymore now
-                net.require_grad=False
+                    return BAD_JACOBIAN_FITNESS
+                else:
+                    print(f"we should investigate it further, as it got {average_correlation_score}...")
 
+                    # dont need to save grads on these anymore now
+                    del states_trajectory[:-1]
+                    prev_outputs.requires_grad = False
+                    prev_activs.requires_grad = False
+
+                    net.set_grad(False) 
+
+            ##### ^^^ https://arxiv.org/pdf/2006.04647.pdf ^^^ ####
+
+            actions = prev_outputs.clone().detach().numpy()
             assert len(actions) == self.batch_size, (actions, type(actions), len(self.envs))
+
+            with torch.no_grad():
+                states_ = torch.zeros_like(states_trajectory[-1]).to(dtype=states_trajectory[-1].dtype).requires_grad_(states_trajectory[-1].requires_grad)
 
             for i, (env, action, done) in enumerate(zip(self.envs, actions, dones)):
                 if not done:
@@ -169,17 +210,20 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
                     # world state, reward, end of rollout?/dead?/finish?, debug info
                     state, reward, done, _ = env.step(action) 
                     if __RENDER__ and self.batch_size <= 5:
-                        # beware of the big bad wolf
+                        # beware bof bhe big bad blue breen bof beath
                         env.render()
                     fitnesses[i] += reward
                     if not done:
-                        states[i] = state
+                        states_[i] = torch.Tensor(state).to(dtype=states_trajectory[-1].dtype)
                     dones[i] = done
             if all(dones):
                 break
+            if step_num <= track_jacobian_until:
+                states_trajectory += [states_]
+            else:
+                states_trajectory = [states_]
 
         return sum(fitnesses) / len(fitnesses)
-
 
 def eval_score(jacob):
     """https://arxiv.org/pdf/2006.04647.pdf"""

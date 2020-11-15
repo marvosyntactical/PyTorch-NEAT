@@ -36,7 +36,7 @@ def create_linear_layer_from_conns(shape, conns, dtype=torch.float64, bias=None)
     for RecurrentNet, bias should be None atm; since for several Linear layers
     a global bias gets added only afterwards
     """
-    assert dtype.is_floating_point or dtype.is_floating_point, dtype
+    assert dtype.is_floating_point or dtype.is_complex, dtype
 
     mat = torch.zeros(shape, dtype=dtype)
     layer = nn.Linear(*shape, bias=bias)
@@ -47,8 +47,7 @@ def create_linear_layer_from_conns(shape, conns, dtype=torch.float64, bias=None)
     if not len(idxs) == 0:
         # insert specified connection weights if there are any
         rows, cols = np.array(idxs).transpose()
-        w = torch.tensor(
-            weights, dtype=dtype)
+        w = torch.tensor(weights, dtype=dtype)
 
         mat[torch.LongTensor(rows), torch.LongTensor(cols)] = w
 
@@ -106,29 +105,51 @@ class RecurrentNet(nn.Module):
         self.register_parameter(name="output_biases", param=
             nn.Parameter(torch.tensor(output_biases).to(dtype=dtype)))
 
-        self.reset(batch_size=self.batch_size)
-    
-    def require_grad(self, bool):
-        """ Activate/Deactivate gradients on all parameters. Also resets activation values! """
-        for p in self.parameters():
-            p.requires_grad=bool
-        self.reset(requires_grad=bool)
+        self.batch_size=batch_size
 
-    def reset(self, batch_size=None, requires_grad=False):
-        """reset internal batch activation tensors which arent model params; use this to update batch size and their requiring grad"""
-        if batch_size is None:
-            batch_size = self.batch_size
-        else:
-            self.batch_size = batch_size
+    def set_grad(self, requires_grad: bool=True):
+        self.requires_grad_(requires_grad) 
+        self.requires_grad = requires_grad # to check this on first step for activ & output initialization
+
+    def init_activs_and_outputs(self, torch_method=torch.zeros) -> (torch.Tensor, torch.Tensor):
+        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(self.requires_grad)
+        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(self.requires_grad)
+        return initial_activations, initial_outputs
+
+    def forward(self, inputs, prev_activs, prev_outputs):
+        '''
+        inputs: (batch_size, n_inputs)
+
+        returns: (batch_size, n_outputs)
+        '''
+        activs = prev_activs # to be able to choose which activations to use for outputs
+
+        # precalculate output layer inputs before hidden loop
+        output_inputs = self.input_to_output(inputs) + self.output_to_output(prev_outputs)
+
         if self.n_hidden > 0:
-            self.activs = torch.zeros(batch_size, self.n_hidden, dtype=self.dtype)
-            self.activs.requires_grad = requires_grad
-        else:
-            self.activs = None
-        self.outputs = torch.zeros(batch_size, self.n_outputs, dtype=self.dtype)
-        self.outputs.requires_grad = requires_grad
-        
+            ### INTERNAL LOOP ###
+            for _ in range(self.n_internal_steps):
+                activs = self.activation(
+                    self.hidden_responses * (
+                        self.input_to_hidden(inputs) +
+                        self.hidden_to_hidden(activs) +
+                        self.output_to_hidden(prev_outputs)
+                        ) + self.hidden_biases)
 
+            if self.use_current_activs:
+                activs_for_output = activs
+            else:
+                activs_for_output = prev_activs
+
+            output_inputs += self.hidden_to_output(activs_for_output)
+        else:
+            activs_for_output = None
+
+        outputs = self.activation(self.output_responses * output_inputs + self.output_biases)
+        return outputs, activs_for_output
+
+    """
     def forward(self, inputs):
         '''
         inputs: (batch_size, n_inputs)
@@ -136,26 +157,26 @@ class RecurrentNet(nn.Module):
         returns: (batch_size, n_outputs)
         '''
         inputs = torch.tensor(inputs, dtype=self.dtype)
-        inputs.requires_grad = True
-        activs_for_output = self.activs
+        activs_for_output = self.activs[-1]
         if self.n_hidden > 0:
             # recurrent loopdeloop
             for _ in range(self.n_internal_steps):
-                self.activs = self.activation(
+                self.activs += [self.activation(
                     self.hidden_responses * (
                         self.input_to_hidden(inputs) +
-                        self.hidden_to_hidden(self.activs) +
-                        self.output_to_hidden(self.outputs)
-                        ) + self.hidden_biases)
+                        self.hidden_to_hidden(self.activs[-1]) +
+                        self.output_to_hidden(self.outputs[-1])
+                        ) + self.hidden_biases)]
             if self.use_current_activs:
-                activs_for_output = self.activs 
+                activs_for_output = self.activs[-1]
         output_inputs = (self.input_to_output(inputs) +
-                            self.output_to_output(self.outputs))
+                            self.output_to_output(self.outputs[-1]))
         if self.n_hidden > 0:
             output_inputs += self.hidden_to_output(activs_for_output)
-        self.outputs = self.activation(
-            self.output_responses * output_inputs + self.output_biases)
-        return self.outputs
+        self.outputs += [self.activation(
+            self.output_responses * output_inputs + self.output_biases)]
+        return self.outputs[-1]
+    """
 
     @staticmethod
     def create(genome, config, batch_size=1, activation=sigmoid_activation,

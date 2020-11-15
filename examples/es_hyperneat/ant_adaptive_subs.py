@@ -30,8 +30,12 @@ _test_env = gym.make(task)
 # NOTE interpretation of 111 scalar values? TODO
 state_space = _test_env.env.observation_space.shape[0] # 111
 # NOTE interpretation of output coords: (aus mujoco antv2 cfg)
-# hip_4, ankle_4, hip_1, ankle_1, hip_2, ankle_2, hip_3, ankle_3 
+# hip_4, ankle_4, hip_1, ankle_1, hip_2, ankle_2, hip_3, ankle_3
 action_space = _test_env.env.action_space.shape[0] # 8
+
+# assert False, (_test_env.env.observation_space.low, _test_env.env.observation_space.high, _test_env.env.observation_space.shape)
+# assert False, (action_space, state_space) # NOTE should be (8, 111)
+del _test_env
 
 output_coords = [
     (1.0, -.5, -.5),
@@ -43,11 +47,6 @@ output_coords = [
     (1.0, -.5, .5),
     (1.0, -1.0, 1.0),
 ]
-
-# assert False, (_test_env.env.observation_space.low, _test_env.env.observation_space.high, _test_env.env.observation_space.shape)
-# assert False, (action_space, state_space) # NOTE should be (8, 111)
-
-del _test_env
 
 def make_env():
     env = gym.make(task)
@@ -114,28 +113,23 @@ def reset_substrate(states):
     input_coords = get_in_coords(states)
     return Substrate(input_coords, output_coords)
 
-def activate_net(net, states, track_macs=True, custom_ops=None, verbose=False, **kwargs):
+def activate_net(net, inputs, track_macs=True, custom_ops=None, verbose=False, **kwargs) ->torch.Tensor:
     """
     Activates net, prints time taken and optionally prints macs and params of net forward pass
     """
 
-    # start = time.time()
 
     if track_macs:
-        outputs, macs, params = profile(net, inputs=(states,), custom_ops=custom_ops, verbose=verbose)
-
-        # print(f"Forward pass took {int(macs)} MAC operations for this net with {int(params)} params")
-        # print(f"Took {round(end-start,5)}s to activate Network.")
-
+        outputs, macs, params = profile(net, inputs=inputs, custom_ops=custom_ops, verbose=verbose)
     else:
-
-        outputs = net(states) # torch.Tensor
+        outputs = net(*inputs) # this is also what is done with inputs inside profile
         macs, params = None, None
 
-    # Threshold activation between 0 and 1:
-    return outputs, macs, params # NOTE warum konvertieren wir hier in bool though?
+    assert type(outputs) == type(()) # PyTorch_Neat.recurrent_net.forward returns (outputs, activations)
+    assert len(outputs) == 2, len(outputs)
 
-
+    # Dont use thresh activation here
+    return outputs, macs, params
 
 
 @click.command()
@@ -156,11 +150,12 @@ def run(n_generations):
     # but high for NASnosearch pruning
 
     BATCHSIZE = 5
+    LOGMACS=False
 
     print(f"evaluating this particular net in {BATCHSIZE} environments in parallel")
 
     evaluator = CovarianceFilterEvaluator(
-        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=True
+        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=LOGMACS
     )
 
     def eval_genomes(genomes, config):
@@ -180,7 +175,7 @@ def run(n_generations):
             os.remove(antlog)
 
     # comment these 2 lines to not log
-    logger = LogReporter(antlog, evaluator, log_macs=True)
+    logger = LogReporter(antlog, evaluator, log_macs=LOGMACS)
     pop.add_reporter(logger)
 
     pop.run(eval_genomes, n_generations)
