@@ -19,7 +19,7 @@ from pytorch_neat.activations import piecewise_linear_activations
 
 from thop import *
 
-max_env_steps = 30 # TODO find where this is actually set
+max_env_steps = 30 # TODO mujoco seems to do 5* this many steps, TODO find out frame skip settings
 task = "Ant-v2"
 
 # phenotype networks map states (input nodes) to actions (output nodes)

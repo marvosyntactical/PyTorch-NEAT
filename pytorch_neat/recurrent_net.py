@@ -111,9 +111,10 @@ class RecurrentNet(nn.Module):
         self.requires_grad_(requires_grad) 
         self.requires_grad = requires_grad # to check this on first step for activ & output initialization
 
-    def init_activs_and_outputs(self, torch_method=torch.zeros) -> (torch.Tensor, torch.Tensor):
-        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(self.requires_grad)
-        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(self.requires_grad)
+    def init_activs_and_outputs(self, torch_method=torch.zeros,require_grad=None) -> (torch.Tensor, torch.Tensor):
+        require_grad = self.requires_Grad if require_grad is None else require_grad
+        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
+        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
         return initial_activations, initial_outputs
 
     def forward(self, inputs, prev_activs, prev_outputs):
