@@ -14,7 +14,7 @@ from pytorch_neat.neat_reporter import LogReporter
 from pytorch_neat.es_hyperneat import ESNetwork
 from pytorch_neat.substrate import Substrate
 from pytorch_neat.cppn import create_cppn
-from pytorch_neat.recurrent_net import RecurrentNet
+from pytorch_neat.recurrent_net import RecurrentNet, DUMMY_NET
 from pytorch_neat.activations import piecewise_linear_activations
 
 from thop import *
@@ -76,6 +76,15 @@ def get_in_coords(states=None):
 
     return input_coords
 
+
+def make_dummy_net(genome, config, batch_size, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
+    return DUMMY_NET(
+            in_feat=state_space_dim,
+            hidden=16,
+            out_feat=action_space_dim,
+            batch_size=batch_size
+            )
+
 def make_net(genome, config, batch_size, state_space_dim=111, action_space_dim=8) -> RecurrentNet:
     #start by setting up a substrate for this bad ant boi
     params = {
@@ -125,9 +134,12 @@ def activate_net(net, inputs, track_macs=True, custom_ops=None, verbose=False, *
 
 
     if track_macs:
+        # FIX profiling
         outputs, macs, params = profile(net, inputs=inputs, custom_ops=custom_ops, verbose=verbose)
     else:
-        outputs = net(*inputs) # this is also what is done with inputs inside profile
+        outputs = net(*inputs) # this is also what is done with inputs inside profile:
+        # silver@hal9000:~/projects/evo/PyTorch-NEAT/pytorch_neat/pytorch-OpCounter/thop/profile.py
+
         macs, params = None, None
 
     assert type(outputs) == type(()) # PyTorch_Neat.recurrent_net.forward returns (outputs, activations)
@@ -156,11 +168,13 @@ def run(n_generations):
 
     BATCHSIZE = 5
     LOGMACS=False
+    net_factory_function = make_net # make_net
 
     print(f"evaluating this particular net in {BATCHSIZE} environments in parallel")
 
+
     evaluator = CovarianceFilterEvaluator(
-        make_net, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=LOGMACS
+        net_factory_function, activate_net, make_env=make_env, max_env_steps=max_env_steps, batch_size=BATCHSIZE, track_macs=LOGMACS
     )
 
     def eval_genomes(genomes, config):

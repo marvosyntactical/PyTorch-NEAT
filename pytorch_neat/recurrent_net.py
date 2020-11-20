@@ -64,8 +64,8 @@ class RecurrentNet(nn.Module):
                  hidden_biases, output_biases,
                  batch_size=1,
                  use_current_activs=False,
-                 activation=str_to_activation["sigmoid"],
-                 n_internal_steps=1,
+                 activation=str_to_activation["relu"],
+                 n_internal_steps=2,
                  dtype=torch.float64):
         super(RecurrentNet, self).__init__()
 
@@ -111,8 +111,8 @@ class RecurrentNet(nn.Module):
         self.requires_grad_(requires_grad) 
         self.requires_grad = requires_grad # to check this on first step for activ & output initialization
 
-    def init_activs_and_outputs(self, torch_method=torch.zeros,require_grad=None) -> (torch.Tensor, torch.Tensor):
-        require_grad = self.requires_Grad if require_grad is None else require_grad
+    def init_activs_and_outputs(self, torch_method=torch.randn, require_grad=None) -> (torch.Tensor, torch.Tensor):
+        require_grad = self.requires_grad if require_grad is None else require_grad
         initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
         initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
         return initial_activations, initial_outputs
@@ -149,35 +149,6 @@ class RecurrentNet(nn.Module):
 
         outputs = self.activation(self.output_responses * output_inputs + self.output_biases)
         return outputs, activs_for_output
-
-    """
-    def forward(self, inputs):
-        '''
-        inputs: (batch_size, n_inputs)
-
-        returns: (batch_size, n_outputs)
-        '''
-        inputs = torch.tensor(inputs, dtype=self.dtype)
-        activs_for_output = self.activs[-1]
-        if self.n_hidden > 0:
-            # recurrent loopdeloop
-            for _ in range(self.n_internal_steps):
-                self.activs += [self.activation(
-                    self.hidden_responses * (
-                        self.input_to_hidden(inputs) +
-                        self.hidden_to_hidden(self.activs[-1]) +
-                        self.output_to_hidden(self.outputs[-1])
-                        ) + self.hidden_biases)]
-            if self.use_current_activs:
-                activs_for_output = self.activs[-1]
-        output_inputs = (self.input_to_output(inputs) +
-                            self.output_to_output(self.outputs[-1]))
-        if self.n_hidden > 0:
-            output_inputs += self.hidden_to_output(activs_for_output)
-        self.outputs += [self.activation(
-            self.output_responses * output_inputs + self.output_biases)]
-        return self.outputs[-1]
-    """
 
     @staticmethod
     def create(genome, config, batch_size=1, activation=sigmoid_activation,
@@ -344,3 +315,56 @@ class RecurrentNet(nn.Module):
                             activation=activation,
                             use_current_activs=use_current_activs,
                             n_internal_steps=n_internal_steps)
+
+
+class DUMMY_NET(nn.Module):
+
+    def __init__(
+            self, 
+            in_feat=111, 
+            hidden=5, 
+            out_feat=8,
+            batch_size=5,
+            dtype=torch.float32,
+            ):
+        super(DUMMY_NET, self).__init__()
+
+        self.activation = nn.ReLU()
+
+        self.fc1 = nn.Linear(in_feat, hidden)
+        self.fc2 = nn.Linear(hidden, hidden)
+        self.fc3 = nn.Linear(hidden, out_feat)
+
+        self.n_hidden = hidden
+        self.n_outputs = out_feat
+        self.n_internal_steps = 3
+        self.batch_size = batch_size
+        self.dtype = dtype
+        self.use_current_activs = True
+
+    def set_grad(self, requires_grad: bool=True):
+        self.requires_grad_(requires_grad) 
+        self.requires_grad = requires_grad # to check this on first step for activ & output initialization
+    
+    def init_activs_and_outputs(self, torch_method=torch.zeros, require_grad=None) -> (torch.Tensor, torch.Tensor):
+        require_grad = self.requires_Grad if require_grad is None else require_grad
+        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
+        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
+        return initial_activations, initial_outputs
+
+    def forward(self, inputs, prev_activs, prev_outputs):
+        # sane ff implementation
+
+        x = self.fc1(inputs)
+        activs = self.activation(x)
+
+        if self.n_hidden > 0:
+            for _ in range(self.n_internal_steps):
+                activs = self.activation(self.fc2(activs))
+
+        if self.use_current_activs:
+            activs_for_output  = activs
+        else:
+            activs_for_output = prev_activs
+        outputs = self.fc3(activs_for_output)
+        return (outputs, activs_for_output)
