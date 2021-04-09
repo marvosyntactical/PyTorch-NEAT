@@ -62,19 +62,17 @@ class RecurrentNet(nn.Module):
                  input_to_output, hidden_to_output, output_to_output,
                  hidden_responses, output_responses,
                  hidden_biases, output_biases,
-                 batch_size=1,
                  use_current_activs=False,
                  activation=str_to_activation["relu"],
-                 n_internal_steps=2,
-                 dtype=torch.float64):
+                 n_internal_steps=1,
+                 dtype=torch.float32
+        ):
         super(RecurrentNet, self).__init__()
 
         self.use_current_activs = use_current_activs
         self.activation = activation
         self.n_internal_steps = n_internal_steps
         self.dtype = dtype
-
-        self.batch_size = batch_size
 
         self.n_inputs = n_inputs
         self.n_hidden = n_hidden
@@ -105,16 +103,19 @@ class RecurrentNet(nn.Module):
         self.register_parameter(name="output_biases", param=
             nn.Parameter(torch.tensor(output_biases).to(dtype=dtype)))
 
-        self.batch_size=batch_size
-
     def set_grad(self, requires_grad: bool=True):
         self.requires_grad_(requires_grad) 
         self.requires_grad = requires_grad # to check this on first step for activ & output initialization
 
-    def init_activs_and_outputs(self, torch_method=torch.randn, require_grad=None) -> (torch.Tensor, torch.Tensor):
+    def init_activs_and_outputs(self, 
+            torch_method=torch.randn,
+            require_grad=None,
+            batch_size=1
+        ) -> (torch.Tensor, torch.Tensor):
+
         require_grad = self.requires_grad if require_grad is None else require_grad
-        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
-        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
+        initial_activations = torch_method(batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
+        initial_outputs = torch_method(batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
         return initial_activations, initial_outputs
 
     def forward(self, inputs, prev_activs, prev_outputs):
@@ -194,10 +195,10 @@ class RecurrentNet(nn.Module):
             elif key in output_keys:
                 return output_key_to_idx[key]
 
-        input_to_hidden = ([], [])
+        input_to_hidden  = ([], [])
         hidden_to_hidden = ([], [])
         output_to_hidden = ([], [])
-        input_to_output = ([], [])
+        input_to_output  = ([], [])
         hidden_to_output = ([], [])
         output_to_output = ([], [])
 
@@ -318,13 +319,13 @@ class RecurrentNet(nn.Module):
 
 
 class DUMMY_NET(nn.Module):
+    """to check if i get the jacobian at the right time in multi_env_eval"""
 
     def __init__(
             self, 
             in_feat=111, 
             hidden=5, 
             out_feat=8,
-            batch_size=5,
             dtype=torch.float32,
             ):
         super(DUMMY_NET, self).__init__()
@@ -338,7 +339,6 @@ class DUMMY_NET(nn.Module):
         self.n_hidden = hidden
         self.n_outputs = out_feat
         self.n_internal_steps = 3
-        self.batch_size = batch_size
         self.dtype = dtype
         self.use_current_activs = True
 
@@ -346,10 +346,10 @@ class DUMMY_NET(nn.Module):
         self.requires_grad_(requires_grad) 
         self.requires_grad = requires_grad # to check this on first step for activ & output initialization
     
-    def init_activs_and_outputs(self, torch_method=torch.zeros, require_grad=None) -> (torch.Tensor, torch.Tensor):
-        require_grad = self.requires_Grad if require_grad is None else require_grad
-        initial_activations = torch_method(self.batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
-        initial_outputs = torch_method(self.batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
+    def init_activs_and_outputs(self, torch_method=torch.randn, require_grad=None, batch_size=5) -> (torch.Tensor, torch.Tensor):
+        require_grad = self.requires_grad if require_grad is None else require_grad
+        initial_activations = torch_method(batch_size, self.n_hidden, dtype=self.dtype).requires_grad_(require_grad)
+        initial_outputs = torch_method(batch_size, self.n_outputs, dtype=self.dtype).requires_grad_(require_grad)
         return initial_activations, initial_outputs
 
     def forward(self, inputs, prev_activs, prev_outputs):

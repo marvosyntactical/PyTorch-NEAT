@@ -8,8 +8,10 @@ from pytorch_neat.activations import str_to_activation
 import torch
 from random import random
 
-#encodes a substrate of input and output coords with a cppn, adding 
-#hidden coords along the 
+# encodes a substrate of input and output coords with a CPPN
+# CPPN terminology: "leaves" mean its input nodes,
+# because it always has exactly one output node and can
+# be viewed like a tree
 
 class ESNetwork:
 
@@ -20,7 +22,6 @@ class ESNetwork:
         self.max_depth = params["max_depth"]
         self.variance_threshold = params["variance_threshold"]
         self.band_threshold = params["band_threshold"]
-        self.iteration_level = params["iteration_level"] # what does this do?
         self.division_threshold = params["division_threshold"]
         self.max_weight = params["max_weight"]
         self.connections = set()
@@ -29,9 +30,8 @@ class ESNetwork:
         self.root_x = self.width/2
         self.root_y = (len(substrate.input_coordinates)/self.width)/2
 
-
     # creates phenotype with n dimensions
-    def create_phenotype_network_nd(self, batch_size=1):
+    def create_phenotype_network_nd(self):
         rnn_params = self.es_hyperneat_nd_tensors()
         return RecurrentNet(
             n_inputs = rnn_params["n_inputs"],
@@ -48,7 +48,6 @@ class ESNetwork:
             hidden_biases = rnn_params["hidden_biases"],
             output_biases = rnn_params["output_biases"],
             activation=str_to_activation[self.activation_string],
-            batch_size=batch_size
         )
 
     def reset_substrate(self, substrate):
@@ -63,12 +62,12 @@ class ESNetwork:
             p = q.pop(0)
             # here we will subdivide to 2^coordlength as described above
             # this allows us to search from +- midpoints on each axis of the input coord
-            p.divide_childrens()
+            p.divide_children()
             
             # build CPPN and then query it
             # from one side of the network
             # to try to connect all loose ends to each of these ends of the networks
-            weights = query_torch_cppn_tensors(coords,    p.child_coords, outgoing, self.cppn, self.max_weight)
+            weights = query_torch_cppn_tensors(coords, p.child_coords, outgoing, self.cppn, self.max_weight)
             #         query_torch_cppn_tensors(coords_in, coords_out,     outgoing, cppn,      max_weight=5.0):
             # weights = num_children x num_coords
             
@@ -76,8 +75,8 @@ class ESNetwork:
                 c.w = weights[idx]
 
             low_var_count = 0
-            for x in range(len(coords)): # x is task domain dimension,e.g. x=1,2 or x=1,2,3
-                if(torch.var(weights[: ,x]) < self.division_threshold):
+            for dim in range(len(coords)): # dim task domain dimension,e.g. dim=0,1 or dim=0,1,2
+                if(torch.var(weights[: ,dim]) < self.division_threshold):
                     low_var_count += 1 
             
             if (p.lvl < self.initial_depth) or \
@@ -96,8 +95,6 @@ class ESNetwork:
         :param coords: CPPN tree nodes to establish connections to; this is first called with CPPN input nodes and then recursively done
         :param p: root of the quadtree that has been made in division_initialization_nd_tensors 
 
-        
-        
         """
         coord_len = len(coords[0])
         num_coords = len(coords)
@@ -106,8 +103,9 @@ class ESNetwork:
         for c in p.cs:
             # where the magic shall happen
             if (torch.var(c.w) >= self.variance_threshold):
+                # print("recursed to child")
                 # "repeat division on children with parent variance greater variance threshold" because this area seems informative
-                self.prune_all_the_tensors_aha(coords, c, outgoing)
+                self.prune_all_the_tensors_aha(coords, c, outgoing) # DFS
 
             else:
                 tree_coords = []
@@ -130,7 +128,9 @@ class ESNetwork:
                     tree_coords.append(query_coord2)
 
                 con = None
-                weights = abs(c.w - query_torch_cppn_tensors(coords, tree_coords, outgoing, self.cppn, self.max_weight))
+                suggested_w = query_torch_cppn_tensors(coords, tree_coords, outgoing, self.cppn, self.max_weight)
+                weights = abs(c.w - suggested_w)
+                print(f"weights: {weights}, c.w:{c.w}, suggested_w:{suggested_w}")
 
                 for x in range(num_coords):
                     # group each dimensional permutation for plus/minus offsets 
@@ -143,17 +143,11 @@ class ESNetwork:
                         else:
                             con = nd_Connection(c.coord, coords[x], c.w[x])
                     if con is not None:
-                        weight_threshold = 0.0
-                        if con.weight >= weight_threshold:
+                        if not con.weight == 0.0:
                             self.connections.add(con)
-        return
-    
-    def divide_and_prune_and_update_conns_in_place(self, input_coords, conns_to_update, outgoing=True):
-        # TODO use me
 
-        root = self.division_initialization_nd_tensors(input_coords, outgoing)
-        self.prune_all_the_tensors_aha(input_coords, root, outgoing)
-        conns_to_update = conns_to_update.union(self.connections)
+        print(f"total connections gotten: {self.connections}")
+        return
             
     def es_hyperneat_nd_tensors(self):
         """
@@ -161,12 +155,10 @@ class ESNetwork:
         http://eplex.cs.ucf.edu/papers/risi_gecco10.pdf
         is done here
 
-        This function called by create_phenotype_network_nd
+        This function is called by create_phenotype_network_nd
         """
-
         inputs = self.substrate.input_coordinates
         outputs = self.substrate.output_coordinates
-
 
         hidden_full = []
         hidden_nodes, unexplored_hidden_nodes, hidden_ids = [], [], []
@@ -178,6 +170,7 @@ class ESNetwork:
 
         for c in connections1:
             hidden_nodes.append(tuple(c.coord2))
+
         hidden_full.extend([c for c in hidden_nodes])
         self.connections = set()
         unexplored_hidden_nodes = copy.deepcopy(hidden_nodes)
@@ -282,7 +275,7 @@ class BatchednDimensionTree:
         """
         return list(itertools.product([1,-1], repeat=len(self.coord)))
     
-    def divide_childrens(self):
+    def divide_children(self):
         for x in range(self.num_children): # 2^dimension quadtree split
             new_coord = []
             for y in range(len(self.coord)):  # task dimensions (2 or 3 or what you want)
@@ -312,8 +305,6 @@ class nd_Connection:
         return hash(self.coords + (self.weight,))
 
 def query_torch_cppn_tensors(coords_in, coords_out, outgoing, cppn, max_weight=5.0, batch_size=None):
-    # print([type(thing) for thing in [coords_in, coords_out, outgoing]])
-    # assert False, [coords_in, coords_out, outgoing]
     inputs = get_nd_coord_inputs(coords_in, coords_out, outgoing, batch_size)
     activs = cppn(input_dict = inputs)
     return activs

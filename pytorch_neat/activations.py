@@ -17,11 +17,11 @@ import torch.nn.functional as F
 
 
 def sigmoid_activation(x):
-    return torch.sigmoid(5 * x)
+    return torch.sigmoid(x)
 
 
 def tanh_activation(x):
-    return torch.tanh(2.5 * x)
+    return torch.tanh(x)
 
 
 def abs_activation(x):
@@ -49,7 +49,7 @@ def hard_sigmoid_activation(x):
     return F.hard_sigmoid(x)
 
 def hard_tanh_activation(x):
-    return F.hard_tanh(x)
+    return F.hardtanh(x)
 
 
 str_to_activation = {

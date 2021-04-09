@@ -45,7 +45,7 @@ class MultiEnvEvaluator:
         states = [env.reset() for env in self.envs]
         dones = [False] * self.batch_size
 
-        __RENDER__ = False # batch size also needs to be below certain thresh to prevent desktop from death
+        __RENDER__ = True # batch size also needs to be below certain thresh to prevent desktop from death
 
         step_num = 0
         while True:
@@ -104,6 +104,7 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
         else:
             assert len(envs) == batch_size
             self.envs = envs
+
         self.make_net = make_net
         self.activate_net = activate_net
         self.batch_size = batch_size
@@ -112,9 +113,8 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
         if self.track_macs:
             self.CUMMACS = 0
 
-        # default `log_dir` is "runs" - we'll be more specific here
         if tb_write:
-            self.tb_writer = SummaryWriter('runs/ant_v2') 
+            self.tb_writer = SummaryWriter('runs/bullet') 
         else:
             self.tb_writer = None
 
@@ -134,33 +134,36 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
 
             step_num = 0
 
-            __RENDER__ = False
+            __RENDER__ = True # batch size also needs to be below certain thresh to prevent desktop from death
+
             correlation_threshold = float("-inf")  # achieve this much to survive # TODO determine from samples
             correlation_scores = []
             BAD_JACOBIAN_FITNESS = -200
-            track_jacobian_until = 8 # track for first few steps
+            track_jacobian_until = 2 # track for first few steps
             retain_graph = True # I think I always need this
-            recurse_for_jacobian = False # use first states as grad input? or most recent states?
+            recurse_for_jacobian = True # use first states as grad input? or most recent states?
 
             if recurse_for_jacobian:
                 states_trajectory[0].requires_grad_(True)
                 grad_inputs = states_trajectory[0]
 
             net.set_grad(True)
-            prev_activs, prev_outputs = net.init_activs_and_outputs(torch_method=torch.randn, require_grad=False)
+            prev_activs, prev_outputs = net.init_activs_and_outputs(
+                torch_method=torch.randn, require_grad=False, batch_size=self.batch_size
+            )
 
             if self.tb_writer is not None:
                 _probe_inputs_ = (states_trajectory[0], prev_activs, prev_outputs)
                 if net.n_hidden > 0:
                     # ^ net must return Tensors only, see recurrent_net forward pass
                     try:
-                        # use jit to find out module code graph
+                        # use jit to find out module graph
                         self.tb_writer.add_graph(net, _probe_inputs_)
                         self.tb_writer.close()
                     except RuntimeError:
                         print([type(t) for t in _probe_inputs_])
                         raise
-            
+
             while True:
                 # simulate in batch parallel environments, breaking if all done or max_env_steps reached
                 step_num += 1
@@ -186,28 +189,25 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
                     print("actions:")
                     print(prev_outputs)
 
-                    # compute backward pass to get jacobian of params w.r.t. to x
+                    # compute backward pass to get jacobian of params w.r.t. to batch
                     prev_outputs.backward(torch.ones_like(prev_outputs), retain_graph=retain_graph if step_num < track_jacobian_until else False)
 
                     # forward
                     assert grad_inputs.requires_grad == True
                     for p in net.parameters():
                         assert p.requires_grad == True, p
-
-                    # TODO find out if this has to be set
-                    # assert prev_activs == None or prev_activs.grad_fn is not None
                     assert prev_outputs.requires_grad == True
-
                     assert grad_inputs.grad is not None, "somehow the gradient from the RNN outputs was not backpropped to the inputs"
 
-                    jacobian = grad_inputs.grad.clone().detach().reshape(self.batch_size, -1).numpy()
+                    jacobian = grad_inputs.grad.clone().detach().view(self.batch_size, -1).numpy()
 
                     print("jacobian:")
                     print(jacobian.shape)
                     print(jacobian)
+                    input("well...?")
 
                     try:
-                        correlation_score = eval_score(jacobian)
+                        correlation_score = self.eval_score(jacobian)
                     except Exception as e:
                         # got NaN
                         print(e)
@@ -216,9 +216,9 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
 
                     for name, p in net.named_parameters():
                         if hasattr(p, "grad") and p.grad is not None:
-                            if (p!=0).any():
-                                print(f"found param '{name}' with non-zero jacobian:")
-                                print(p.grad.clone().detach().numpy())
+                            if (p.grad!=0).any():
+                                print(f"found param '{name}' with non-zero jacobian!")
+                            input(f"{name} has grad\n{p.grad}")
 
                 else:
                     # normal action calculation
@@ -240,8 +240,8 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
                     average_correlation_score = sum(correlation_scores) / track_jacobian_until
 
                     print(f"after evaluating this net {track_jacobian_until} times, we decide")
-                    if average_correlation_score < correlation_threshold:
-                        print(f"it is not worth the effort, as it got only {average_correlation_score} on average during these evaluations")
+                    if average_correlation_score < correlation_threshold or np.isnan(average_correlation_score):
+                        print(f"it is not worth the effort, as it got only {str(average_correlation_score).upper()} on average during these evaluations")
                         return BAD_JACOBIAN_FITNESS
                     else:
                         print(f"we should investigate it further, as it got:")
@@ -268,15 +268,19 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
                         # openAI gym env.step returns: 
                         # world state, reward, end of rollout?/dead?/finish?, debug info
                         state, reward, done, _ = env.step(action) 
-                        if __RENDER__ and self.batch_size <= 5:
-                            # beware bof bhe big bad blue breen bof beath
-                            env.render()
+
+                        # if __RENDER__ and self.batch_size <= 5:
+                        #     # beware bof bhe big bad blue breen bof beath
+                        # env.render()
+
                         fitnesses[i] += reward
+
                         if not done:
                             states_[i] = torch.Tensor(state).to(dtype=states_trajectory[-1].dtype)
                         dones[i] = done
                 if all(dones):
                     break
+                            
                 if step_num <= track_jacobian_until:
                     states_trajectory += [states_]
                 else:
@@ -284,19 +288,18 @@ class CovarianceFilterEvaluator(MultiEnvEvaluator):
 
             return sum(fitnesses) / len(fitnesses)
 
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as e:
             if self.tb_writer is not None:
                 self.tb_writer.close()
-            raise # 'Aborted!'
+            raise e# 'Aborted!'
 
-def eval_score(jacob):
-    """https://arxiv.org/pdf/2006.04647.pdf"""
+    @staticmethod
+    def eval_score(jacob, eps=1e-5):
+        """https://arxiv.org/pdf/2006.04647.pdf"""
 
-    corrs = np.corrcoef(jacob)
-    v, _  = np.linalg.eig(corrs)
-    input(v)
-    k = 1e-5
-    return -np.sum(np.log(v + k) + 1./(v + k))
+        corrs = np.corrcoef(jacob)
+        eig, _  = np.linalg.eig(corrs)
+        return -np.sum(np.log(eig + eps) + 1./(eig + eps))
 
 
 
